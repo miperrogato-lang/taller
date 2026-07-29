@@ -334,7 +334,11 @@
 
 <div class="toast" id="toast">✓ Pedido confirmado</div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+/* ── Supabase ── */
+let db=null;
+try{db=window.supabase.createClient('https://tmouwzrtjbvqyiloyods.supabase.co','sb_publishable_BqHXaXmGl0Px27THUtLcJQ_anBXItji');}catch(e){console.error('Supabase init',e);}
 /* ── datos ── */
 const IMPRESORES=['Johnny','Pablo','Franco','José'];
 const EQUIPO=['Johnny','Pablo','Franco','José','Tomas','Lisandro Gil','Gian','Vanesa'];
@@ -385,7 +389,7 @@ function toMin(o){return o.h*60+o.m;}
 function refreshFich(){const el=$('#horaOficial');if(el)el.textContent=hOfic();const a=Object.values(fichajes).filter(f=>f.estado==='adentro').length;const c=$('#fichCount');if(c)c.textContent=a+' fichados';}
 $('#fichBtn').onclick=()=>{buildFich();show('scFichaje');};
 function buildFich(){$('#horaOficial2').textContent=hOfic();const g=$('#fichGrid');g.innerHTML='';EQUIPO.forEach(n=>{const f=fichajes[n];const dentro=f&&f.estado==='adentro';const b=document.createElement('button');b.className='tile fichtile'+(dentro?' in':'');b.innerHTML=dentro?`${n}<small>adentro · ${f.desde}</small>`:`${n}<small>tocar para entrar</small>`;b.onclick=()=>toggleFich(n);g.appendChild(b);});}
-function toggleFich(n){const d=new Date();const now={h:d.getHours(),m:d.getMinutes()};let f=fichajes[n]||{estado:'afuera',desde:null,eventos:[]};if(f.estado!=='adentro'){let hm=now;if(f.eventos.length===0&&toMin(now)<toMin(horaOficial))hm={...horaOficial};f.estado='adentro';f.desde=hmStr(hm);f.eventos.push({tipo:'entrada',hhmm:hmStr(hm)});}else{f.estado='afuera';f.eventos.push({tipo:'salida',hhmm:hmStr(now)});f.desde=null;}fichajes[n]=f;buildFich();refreshFich();}
+function toggleFich(n){const d=new Date();const now={h:d.getHours(),m:d.getMinutes()};let f=fichajes[n]||{estado:'afuera',desde:null,eventos:[]};let tipo,hora;if(f.estado!=='adentro'){let hm=now;if(f.eventos.length===0&&toMin(now)<toMin(horaOficial))hm={...horaOficial};hora=hmStr(hm);tipo='entrada';f.estado='adentro';f.desde=hora;f.eventos.push({tipo,hhmm:hora});}else{hora=hmStr(now);tipo='salida';f.estado='afuera';f.eventos.push({tipo,hhmm:hora});f.desde=null;}fichajes[n]=f;buildFich();refreshFich();saveFichaje(n,tipo,hora);}
 $('#dayStrip').onclick=()=>$('#ovHora').classList.add('on');
 $('#ovHoraClose').onclick=()=>$('#ovHora').classList.remove('on');
 $$('.horaOpt').forEach(b=>b.onclick=()=>{const p=b.dataset.t.split(':');horaOficial={h:+p[0],m:+p[1]};$('#ovHora').classList.remove('on');refreshFich();if($('#scFichaje').classList.contains('on'))buildFich();});
@@ -485,7 +489,7 @@ function renderConfirm(){
   $('#cTot').textContent=cur.lineas.reduce((a,l)=>a+l.qty,0).toLocaleString('es-AR')+' bolsas';
 }
 $('#btnBack').onclick=()=>show('scBuild',false);
-$('#btnConfirm').onclick=()=>{sesion.pedidos.push(cur);refreshHome();const t=$('#toast');t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1900);cur=null;draft=null;scStack.length=0;scStack.push('scHome');show('scHome',false);};
+$('#btnConfirm').onclick=()=>{const ped=cur;sesion.pedidos.push(ped);refreshHome();toastMsg('✓ Pedido confirmado');cur=null;draft=null;scStack.length=0;scStack.push('scHome');show('scHome',false);savePedido(ped);};
 
 /* ── trabajos del día ── */
 $('#pedHoyBtn').onclick=()=>{buildPedidos();show('scPedidos');};
@@ -541,8 +545,34 @@ function renderAdmin(){
   $('#adFich').innerHTML=dentro.length?dentro.map(([n,f])=>`<div class="fichrow"><span>${n}</span><span class="num">desde ${f.desde}</span></div>`).join(''):'<div class="admuted">Nadie fichado ahora.</div>';
 }
 
+/* ── Supabase: guardar y cargar ── */
+function toastMsg(txt){const t=$('#toast');t.textContent=txt;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200);}
+async function savePedido(ped){
+  if(!db)return;
+  try{
+    const {data,error}=await db.from('est_pedidos').insert({numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso'}).select().single();
+    if(error)throw error;
+    const rows=ped.lineas.map(l=>({pedido_id:data.id,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty}));
+    const {error:e2}=await db.from('est_lineas').insert(rows);
+    if(e2)throw e2;
+  }catch(err){console.error('savePedido',err);toastMsg('⚠ No se pudo guardar en la nube');}
+}
+async function saveFichaje(operario,tipo,hora){if(!db)return;try{await db.from('est_fichajes').insert({operario,tipo,hora});}catch(err){console.error('saveFichaje',err);}}
+async function loadData(){
+  if(!db)return;
+  try{
+    const t=new Date();const start=new Date(t.getFullYear(),t.getMonth(),t.getDate()).toISOString();
+    const {data:peds}=await db.from('est_pedidos').select('*, est_lineas(*)').gte('created_at',start).order('created_at',{ascending:true});
+    if(peds)sesion.pedidos=peds.map(p=>({numero:p.numero,operario:p.operario,compartido:p.compartido,estado:p.estado,lineas:(p.est_lineas||[]).map(l=>({prod:l.producto,med:l.medida,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras,colores:l.colores,qty:l.cantidad}))}));
+    const todayISO=start.slice(0,10);
+    const {data:fs}=await db.from('est_fichajes').select('*').eq('fecha',todayISO).order('created_at',{ascending:true});
+    if(fs){fichajes={};fs.forEach(e=>{const f=fichajes[e.operario]||{estado:'afuera',desde:null,eventos:[]};if(e.tipo==='entrada'){f.estado='adentro';f.desde=e.hora;}else{f.estado='afuera';f.desde=null;}f.eventos.push({tipo:e.tipo,hhmm:e.hora});fichajes[e.operario]=f;});}
+    refreshHome();
+  }catch(err){console.error('loadData',err);}
+}
+
 /* init */
-refreshHome();scStack.push('scHome');
+refreshHome();scStack.push('scHome');loadData();
 </script>
 </body>
 </html>
