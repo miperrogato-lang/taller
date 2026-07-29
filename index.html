@@ -98,6 +98,22 @@
   .prez{display:inline-flex;flex-direction:column;align-items:center;gap:1px;background:#F0F0F0;color:var(--gray);border-radius:10px;padding:8px 13px;font-size:13.5px;font-weight:700;min-width:64px}
   .prez.in{background:#E7F7EE;color:#166534;border:1px solid #9BDBB5}
   .prez small{font-size:10.5px;font-weight:600;opacity:.85}
+  .buscarbtn{width:100%;border:2px solid var(--line2);background:var(--surf);color:var(--ink);font-family:inherit;font-size:16px;font-weight:800;padding:14px;border-radius:14px;cursor:pointer;margin-bottom:20px}
+  .buscarbtn:active{background:var(--bg)}
+  .contbtn{width:100%;min-height:56px;border-radius:13px;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer;border:2px solid var(--line2);background:var(--surf);color:var(--ink);margin-bottom:10px}
+  .contbtn.primary{background:var(--amber);border-color:var(--amber);color:#222222}
+  .contbtn:active{transform:scale(.98)}
+  .prevcard{background:#FFF8E1;border:1px solid #FCE9A8;border-radius:12px;padding:12px 14px;margin-bottom:16px}
+  .prevh{font-size:12px;font-weight:800;color:#7a5c00;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
+  .prevrow{font-size:13.5px;font-weight:700;padding:6px 0;border-top:1px solid #FCE9A8}
+  .prevrow:first-of-type{border-top:none}
+  .prevrow small{display:block;color:var(--gray);font-weight:400;font-size:12.5px;margin-top:1px}
+  .bcard{background:var(--surf);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+  .bch{padding:11px 14px;background:#FFFDF5;border-bottom:1px solid var(--line);font-size:15px;font-weight:800;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .bch span:last-child{font-size:12px;color:var(--gray);font-weight:600;text-align:right}
+  .bline{padding:10px 14px;border-bottom:1px solid var(--line);font-size:14px}
+  .bline:last-child{border:none}
+  .bline small{display:block;color:var(--gray);font-size:12px;margin-top:1px}
   button.st{font-family:inherit}
   .st.tap{cursor:pointer}
   .st.tap:active{background:#FFFDF5;border-color:var(--amber)}
@@ -196,11 +212,11 @@
   <div class="scroll">
     <!-- HOME -->
     <div class="screen on" id="scHome">
-      <button class="daystrip" id="dayStrip"><span>Inicio de jornada <b id="horaOficial">06:00</b> · tocá para cambiar</span><span class="fichCount" id="fichCount">0 fichados</span></button>
       <div class="home2">
         <button class="hero-btn half" id="fichBtn">Fichar</button>
         <button class="hero-btn half dark" id="startBtn">Cargar pedido</button>
       </div>
+      <button class="buscarbtn" id="buscarBtn">Buscar pedido</button>
       <div class="home-stats">
         <button class="st stbtn" id="pedHoyBtn"><div class="v num" id="hPed">0</div><div class="k">Pedidos hoy ›</div></button>
         <div class="st"><div class="v num" id="hBol">0</div><div class="k">Bolsas</div></div>
@@ -220,9 +236,16 @@
 
     <!-- FICHAJE -->
     <div class="screen" id="scFichaje">
-      <h2>Fichaje · inicio <span id="horaOficial2" class="num">06:00</span></h2>
+      <h2>Fichaje</h2>
       <p style="font-size:13px;color:var(--gray);margin:-6px 0 14px;line-height:1.5">Tocá tu nombre para marcar entrada. Si ya estás adentro, tocalo de nuevo para salir (mandado o fin del día).</p>
       <div class="grid names" id="fichGrid"></div>
+    </div>
+
+    <!-- BUSCAR PEDIDO -->
+    <div class="screen" id="scBuscar">
+      <h2>Buscar pedido</h2>
+      <button class="pedidoField empty" id="buscarField"><span class="lbl">N° de pedido</span><span class="val" id="buscarVal">Tocá para ingresar</span></button>
+      <div id="buscarRes"></div>
     </div>
 
     <!-- TRABAJOS DEL DÍA -->
@@ -262,6 +285,7 @@
 
       <div id="lineBuilder" style="display:none">
         <button class="shareTog" id="shareTog">Trabajo compartido (lo hacen entre varios)</button>
+        <div id="previasBox" style="display:none"></div>
         <div class="sect"><h2 class="step" data-n="2">Tipo de bolsa</h2><div class="grid c2" id="gProd"></div></div>
         <div class="sect" id="secMed" style="display:none"><h2 class="step" data-n="3">Medida</h2><div class="grid c3" id="gMed"></div></div>
         <div class="sect" id="secBolsa" style="display:none"><h2 class="step" data-n="4">Color de bolsa</h2><div class="grid c3" id="gBolsa"></div></div>
@@ -323,18 +347,6 @@
   </div>
 </div></div>
 
-<div class="ov" id="ovHora"><div class="pad">
-  <div class="kh"><span class="lbl">Hora oficial de inicio</span><button class="close" id="ovHoraClose">✕</button></div>
-  <div class="g3">
-    <button class="key horaOpt" data-t="04:00">04:00</button>
-    <button class="key horaOpt" data-t="05:00">05:00</button>
-    <button class="key horaOpt" data-t="06:00">06:00</button>
-    <button class="key horaOpt" data-t="07:00">07:00</button>
-    <button class="key horaOpt" data-t="08:00">08:00</button>
-    <button class="key horaOpt" data-t="09:00">09:00</button>
-  </div>
-</div></div>
-
 <div class="ov" id="ovPin"><div class="pad">
   <div class="kh"><span class="lbl">Código de administrador</span><button class="close" id="pinClose">✕</button></div>
   <div class="disp num" id="pinDisp" style="text-align:center;letter-spacing:.25em">· · · ·</div>
@@ -347,6 +359,14 @@
   </div>
 </div></div>
 
+<div class="ov" id="ovCont"><div class="pad">
+  <div class="kh"><span class="lbl">Pedido existente</span><button class="close" id="contClose">✕</button></div>
+  <p id="contMsg" style="font-size:15px;font-weight:600;margin-bottom:14px;line-height:1.4">Este pedido ya existe hoy. ¿Qué querés hacer?</p>
+  <button class="contbtn" id="contVer">Ver pedido</button>
+  <button class="contbtn primary" id="contAgregar">Agregar producción</button>
+  <button class="contbtn" id="contCancel">Cancelar</button>
+</div></div>
+
 <div class="toast" id="toast">✓ Pedido confirmado</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -355,8 +375,8 @@
 let db=null;
 try{db=window.supabase.createClient('https://tmouwzrtjbvqyiloyods.supabase.co','sb_publishable_BqHXaXmGl0Px27THUtLcJQ_anBXItji');}catch(e){console.error('Supabase init',e);}
 /* ── datos ── */
-const IMPRESORES=['Johnny','Pablo','Franco','José'];
-const EQUIPO=['Johnny','Pablo','Franco','José','Tomas','Lisandro Gil','Gian','Vanesa'];
+const IMPRESORES=['Pablo','Yoni','Franco','José'];
+const EQUIPO=['Pablo','Yoni','Franco','José','Tomás','Lisandro Gil','Gian','Lisandro Aquino','Vanesa','Alfonso','Joana'];
 const PRODUCTOS=[
   {id:'fris',name:'Friselina',solvAuto:false,med:['Palanca autos','15×20 riñón','20×30 riñón','20×40 riñón','30×40 riñón','30×30 asas','30×40 asas','40×40 asas','45×40 asas','60×40 asas']},
   {id:'poli',name:'Polietileno',solvAuto:true,med:['15×20','20×30','25×35','30×40','35×45','40×50']},
@@ -393,21 +413,15 @@ function refreshHome(){
   $('#hImp').textContent=imp.toLocaleString('es-AR');
   refreshFich();
 }
-$('#startBtn').onclick=()=>{cur={operario:null,numero:null,compartido:false,lineas:[]};buildWho();show('scWho');};
+$('#startBtn').onclick=()=>{cur={operario:null,numero:null,compartido:false,previas:[],lineas:[]};buildWho();show('scWho');};
 
 /* ── fichaje ── */
-let horaOficial={h:6,m:0};
 let fichajes={};
-function hOfic(){return String(horaOficial.h).padStart(2,'0')+':'+String(horaOficial.m).padStart(2,'0');}
 function hmStr(o){return String(o.h).padStart(2,'0')+':'+String(o.m).padStart(2,'0');}
-function toMin(o){return o.h*60+o.m;}
-function refreshFich(){const el=$('#horaOficial');if(el)el.textContent=hOfic();const a=Object.values(fichajes).filter(f=>f.estado==='adentro').length;const c=$('#fichCount');if(c)c.textContent=a+' fichados';}
+function refreshFich(){const a=Object.values(fichajes).filter(f=>f.estado==='adentro').length;const c=$('#fichCount');if(c)c.textContent=a+' fichados';}
 $('#fichBtn').onclick=()=>{buildFich();show('scFichaje');};
-function buildFich(){$('#horaOficial2').textContent=hOfic();const g=$('#fichGrid');g.innerHTML='';EQUIPO.forEach(n=>{const f=fichajes[n];const dentro=f&&f.estado==='adentro';const b=document.createElement('button');b.className='tile fichtile'+(dentro?' in':'');b.innerHTML=dentro?`${n}<small>adentro · ${f.desde}</small>`:`${n}<small>tocar para entrar</small>`;b.onclick=()=>toggleFich(n);g.appendChild(b);});}
-function toggleFich(n){const d=new Date();const now={h:d.getHours(),m:d.getMinutes()};let f=fichajes[n]||{estado:'afuera',desde:null,eventos:[]};let tipo,hora;if(f.estado!=='adentro'){let hm=now;if(f.eventos.length===0&&toMin(now)<toMin(horaOficial))hm={...horaOficial};hora=hmStr(hm);tipo='entrada';f.estado='adentro';f.desde=hora;f.eventos.push({tipo,hhmm:hora});}else{hora=hmStr(now);tipo='salida';f.estado='afuera';f.eventos.push({tipo,hhmm:hora});f.desde=null;}fichajes[n]=f;buildFich();refreshFich();saveFichaje(n,tipo,hora);}
-$('#dayStrip').onclick=()=>$('#ovHora').classList.add('on');
-$('#ovHoraClose').onclick=()=>$('#ovHora').classList.remove('on');
-$$('.horaOpt').forEach(b=>b.onclick=()=>{const p=b.dataset.t.split(':');horaOficial={h:+p[0],m:+p[1]};$('#ovHora').classList.remove('on');refreshFich();if($('#scFichaje').classList.contains('on'))buildFich();});
+function buildFich(){const g=$('#fichGrid');g.innerHTML='';EQUIPO.forEach(n=>{const f=fichajes[n];const dentro=f&&f.estado==='adentro';const b=document.createElement('button');b.className='tile fichtile'+(dentro?' in':'');b.innerHTML=dentro?`${n}<small>adentro · ${f.desde}</small>`:`${n}<small>tocar para entrar</small>`;b.onclick=()=>toggleFich(n);g.appendChild(b);});}
+function toggleFich(n){const d=new Date();const now={h:d.getHours(),m:d.getMinutes()};let f=fichajes[n]||{estado:'afuera',desde:null,eventos:[]};let tipo,hora;if(f.estado!=='adentro'){hora=hmStr(now);tipo='entrada';f.estado='adentro';f.desde=hora;f.eventos.push({tipo,hhmm:hora});}else{hora=hmStr(now);tipo='salida';f.estado='afuera';f.eventos.push({tipo,hhmm:hora});f.desde=null;}fichajes[n]=f;buildFich();refreshFich();saveFichaje(n,tipo,hora);}
 
 /* ── operarios ── */
 function tile(txt,cls){const b=document.createElement('button');b.className='tile '+(cls||'');b.textContent=txt;return b;}
@@ -416,7 +430,7 @@ function pick(n){cur.operario=n;$('#whoName').textContent=n;startBuild();}
 
 /* ── armar ── */
 function newDraft(){draft={prod:null,med:null,bolsa:null,tinta:null,tinta2:null,tipo:null,caras:1,colores:1,qty:null};}
-function startBuild(){newDraft();$('#lineBuilder').style.display=cur.numero?'block':'none';setPedidoField();renderOptions();renderCart();show('scBuild');}
+function startBuild(){newDraft();$('#lineBuilder').style.display=cur.numero?'block':'none';setPedidoField();renderPrevias();renderOptions();renderCart();show('scBuild');}
 $('#chgWho').onclick=()=>{buildWho();show('scWho');};
 
 function setPedidoField(){
@@ -426,7 +440,26 @@ function setPedidoField(){
   const st=$('#shareTog');if(st)st.classList.toggle('on',!!cur.compartido);
 }
 $('#shareTog').onclick=()=>{cur.compartido=!cur.compartido;setPedidoField();};
-$('#pedidoBtn').onclick=()=>openPad('N° de pedido',cur.numero||'',n=>{if(n>0){cur.numero=n;$('#lineBuilder').style.display='block';}setPedidoField();renderOptions();});
+$('#pedidoBtn').onclick=()=>openPad('N° de pedido',cur.numero||'',n=>{if(n>0)checkNumero(n);});
+async function checkNumero(n){
+  let existing=[];
+  if(db){try{const t=new Date();const start=new Date(t.getFullYear(),t.getMonth(),t.getDate()).toISOString();const {data}=await db.from('est_pedidos').select('*, est_lineas(*)').eq('numero',String(n)).gte('created_at',start).order('created_at',{ascending:true});existing=data||[];}catch(e){console.error('checkNumero',e);}}
+  if(existing.length){openCont(n,existing);}
+  else{cur.numero=n;cur.previas=[];$('#lineBuilder').style.display='block';setPedidoField();renderPrevias();renderOptions();}
+}
+let contN=null,contExisting=[];
+function openCont(n,ex){contN=n;contExisting=ex;const u=ex.reduce((a,c)=>a+(c.est_lineas||[]).reduce((b,l)=>b+(l.cantidad||0),0),0);$('#contMsg').innerHTML=`El pedido <b>#${n}</b> ya tiene carga de hoy (${u.toLocaleString('es-AR')} bolsas). ¿Qué querés hacer?`;$('#ovCont').classList.add('on');}
+$('#contClose').onclick=()=>$('#ovCont').classList.remove('on');
+$('#contCancel').onclick=()=>$('#ovCont').classList.remove('on');
+$('#contVer').onclick=()=>{$('#ovCont').classList.remove('on');buscarPedido(contN);};
+$('#contAgregar').onclick=()=>{$('#ovCont').classList.remove('on');cur.numero=contN;cur.previas=contExisting;$('#lineBuilder').style.display='block';setPedidoField();renderPrevias();renderOptions();};
+function renderPrevias(){
+  const box=$('#previasBox');if(!box)return;
+  if(!cur||!cur.previas||!cur.previas.length){box.style.display='none';box.innerHTML='';return;}
+  box.style.display='block';
+  const items=cur.previas.map(c=>{const dt=c.created_at?new Date(c.created_at):null;const fh=dt?String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0'):'';const lin=(c.est_lineas||[]).map(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);return `${(l.cantidad||0).toLocaleString('es-AR')} ${P?P.name:l.producto} ${l.medida}`;}).join(' · ');return `<div class="prevrow"><b>${c.operario}</b>${fh?' · '+fh:''}<small>${lin}</small></div>`;}).join('');
+  box.innerHTML=`<div class="prevcard"><div class="prevh">🔒 Ya cargado en este pedido — no se modifica</div>${items}</div>`;
+}
 
 function optBtn(label,active,fn,swatch,extra){
   const b=document.createElement('button');b.className='tile '+(extra||'')+(active?' sel':'');
@@ -568,6 +601,25 @@ async function deletePedido(i){
   const p=sesion.pedidos[i];if(!p)return;
   if(db&&p.id){try{const {error}=await db.from('est_pedidos').delete().eq('id',p.id);if(error)throw error;}catch(err){console.error('deletePedido',err);toastMsg('⚠ No se pudo borrar en la nube');}}
   sesion.pedidos.splice(i,1);refreshHome();renderAdmin();
+}
+
+/* ── buscar pedido ── */
+$('#buscarBtn').onclick=()=>{$('#buscarField').className='pedidoField empty';$('#buscarVal').textContent='Tocá para ingresar';$('#buscarRes').innerHTML='';show('scBuscar');};
+$('#buscarField').onclick=()=>openPad('Buscar N° de pedido','',n=>{if(n>0)buscarPedido(n);});
+async function buscarPedido(n){
+  $('#buscarField').className='pedidoField set';$('#buscarVal').textContent='#'+n;
+  const R=$('#buscarRes');R.innerHTML='<div class="admuted" style="padding:16px">Buscando…</div>';
+  if(!db){R.innerHTML='<div class="admuted" style="padding:16px">Sin conexión a la base.</div>';return;}
+  try{
+    const {data,error}=await db.from('est_pedidos').select('*, est_lineas(*)').eq('numero',String(n)).order('created_at',{ascending:true});
+    if(error)throw error;
+    if(!data||!data.length){R.innerHTML='<div class="admuted" style="padding:16px">No se encontró el pedido #'+n+'.</div>';return;}
+    R.innerHTML=data.map(p=>{
+      const dt=new Date(p.created_at);const fh=dt.toLocaleDateString('es-AR')+' · '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
+      const lin=(p.est_lineas||[]).map(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;return `<div class="bline"><b>${(l.cantidad||0).toLocaleString('es-AR')}</b> ${nm} ${l.medida}<small>bolsa ${l.color_bolsa||'—'} · ${cols||'—'} · ${l.tipo_tinta||'—'} · ${l.caras}c/${l.colores}col</small></div>`;}).join('');
+      return `<div class="bcard"><div class="bch"><span><b>#${p.numero}</b>${p.compartido?' · compartido':''}</span><span>${fh} · ${p.operario}</span></div>${lin}</div>`;
+    }).join('');
+  }catch(err){console.error('buscar',err);R.innerHTML='<div class="admuted" style="padding:16px">Error al buscar.</div>';}
 }
 
 /* ── Supabase: guardar y cargar ── */
