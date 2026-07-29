@@ -61,6 +61,32 @@
   .pedcard .pmeta{font-size:13px;color:var(--ink);font-weight:600}
   .pedcard .pmeta b{color:var(--amber-d)}
   .pedcard .plines{font-size:12px;color:var(--gray);margin-top:3px;line-height:1.4}
+  .adhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:10px}
+  .adttl{font-size:18px;font-weight:800}
+  .adsub{font-size:12px;color:var(--gray)}
+  .adexit{border:2px solid var(--line2);background:var(--surf);color:var(--ink);font-family:inherit;font-weight:800;font-size:13px;padding:9px 15px;border-radius:11px;cursor:pointer;white-space:nowrap}
+  .adkpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+  .adkpi{background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:13px;text-align:center}
+  .adkpi .v{font-size:23px;font-weight:800}
+  .adkpi .k{font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;margin-top:3px}
+  .adcard{background:var(--surf);border:1px solid var(--line);border-radius:12px;margin-bottom:14px;overflow:hidden}
+  .adcard .adh{padding:12px 15px;border-bottom:1px solid var(--line);font-size:13px;font-weight:800}
+  .adcard .adh small{display:block;color:var(--gray);font-weight:600;font-size:11px;margin-top:1px}
+  .adcard .adbd{padding:13px 15px}
+  .adbrow{margin-bottom:12px}.adbrow:last-child{margin-bottom:0}
+  .adtop{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;font-size:14px;gap:8px}
+  .adnm{font-weight:700;display:flex;align-items:center;gap:8px}
+  .adsw{width:15px;height:15px;border-radius:50%;border:1px solid rgba(0,0,0,.15);flex:none}
+  .adv{font-weight:800;white-space:nowrap}
+  .adbar{height:10px;background:#EDEDED;border-radius:6px;overflow:hidden}
+  .adbar span{display:block;height:100%;background:var(--amber);border-radius:6px}
+  .adsplit{display:flex;gap:12px}
+  .adhalf{flex:1;text-align:center;background:var(--bg);border-radius:10px;padding:13px 8px}
+  .adhalf .v{font-size:22px;font-weight:800}.adhalf .k{font-size:12px;color:var(--gray);font-weight:700;margin-top:2px}.adhalf .p{font-size:12px;color:var(--amber-d);font-weight:800}
+  .admuted{color:var(--gray);font-size:13px;text-align:center;padding:8px}
+  .fichrow{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .fichrow:last-child{border:none}
+  .fichrow .num{color:var(--gray)}
   button.st{font-family:inherit}
   .st.tap{cursor:pointer}
   .st.tap:active{background:#FFFDF5;border-color:var(--amber)}
@@ -149,7 +175,7 @@
 <body>
 <div class="app">
   <div class="top">
-    <div class="logo">●</div>
+    <div class="logo" id="logo">●</div>
     <div><div class="t">Estación de carga</div><div class="s">Carga de producción</div></div>
     <button class="back" id="backBtn">‹ Volver</button>
   </div>
@@ -191,6 +217,24 @@
       <h2>Trabajos del día</h2>
       <p style="font-size:13px;color:var(--gray);margin:-6px 0 14px;line-height:1.5">Los pedidos que ya se cargaron. Si el número está en esta lista, el trabajo está impreso.</p>
       <div id="pedList"></div>
+    </div>
+
+    <!-- ADMIN -->
+    <div class="screen" id="scAdmin">
+      <div class="adhead">
+        <div><div class="adttl">Administrador</div><div class="adsub">Sesión · <span id="adWho">—</span></div></div>
+        <button class="adexit" id="adExit">Salir</button>
+      </div>
+      <div class="adkpis">
+        <div class="adkpi"><div class="v num" id="adBol">0</div><div class="k">Bolsas</div></div>
+        <div class="adkpi"><div class="v num" id="adImp">0</div><div class="k">Impresiones</div></div>
+        <div class="adkpi"><div class="v num" id="adPed">0</div><div class="k">Pedidos</div></div>
+      </div>
+      <div class="adcard"><div class="adh">Producción por operario<small>ordenado por impresiones (caras × colores)</small></div><div class="adbd" id="adOps"></div></div>
+      <div class="adcard"><div class="adh">Tipo de tinta</div><div class="adbd"><div class="adsplit"><div class="adhalf"><div class="v num" id="adAgua">0</div><div class="k">Al agua</div><div class="p" id="adAguaP">—</div></div><div class="adhalf"><div class="v num" id="adSolv">0</div><div class="k">Solvente Eva Flex</div><div class="p" id="adSolvP">—</div></div></div></div></div>
+      <div class="adcard"><div class="adh">Color de bolsa</div><div class="adbd" id="adBolsa"></div></div>
+      <div class="adcard"><div class="adh">Color de tinta</div><div class="adbd" id="adTinta"></div></div>
+      <div class="adcard"><div class="adh">Fichados ahora</div><div class="adbd" id="adFich"></div></div>
     </div>
 
     <!-- ARMAR -->
@@ -273,6 +317,18 @@
     <button class="key horaOpt" data-t="07:00">07:00</button>
     <button class="key horaOpt" data-t="08:00">08:00</button>
     <button class="key horaOpt" data-t="09:00">09:00</button>
+  </div>
+</div></div>
+
+<div class="ov" id="ovPin"><div class="pad">
+  <div class="kh"><span class="lbl">Código de administrador</span><button class="close" id="pinClose">✕</button></div>
+  <div class="disp num" id="pinDisp" style="text-align:center;letter-spacing:.25em">· · · ·</div>
+  <div id="pinMsg" style="text-align:center;color:#C24A3C;font-weight:800;font-size:13px;min-height:18px;margin-bottom:8px"></div>
+  <div class="g3">
+    <button class="key pinkey" data-k="1">1</button><button class="key pinkey" data-k="2">2</button><button class="key pinkey" data-k="3">3</button>
+    <button class="key pinkey" data-k="4">4</button><button class="key pinkey" data-k="5">5</button><button class="key pinkey" data-k="6">6</button>
+    <button class="key pinkey" data-k="7">7</button><button class="key pinkey" data-k="8">8</button><button class="key pinkey" data-k="9">9</button>
+    <button class="key pinkey clr" data-k="C">borrar</button><button class="key pinkey" data-k="0">0</button><button class="key" style="visibility:hidden"></button>
   </div>
 </div></div>
 
@@ -419,7 +475,7 @@ $('#btnDone').onclick=()=>{renderConfirm();show('scConfirm');};
 let padVal='',padOnOK=null;
 function openPad(label,initial,onOK){$('#padLbl').textContent=label;padOnOK=onOK;padVal=initial?String(initial):'';$('#padDisp').textContent=padVal||'0';$('#ov').classList.add('on');}
 $('#padClose').onclick=()=>$('#ov').classList.remove('on');
-$$('.key').forEach(k=>k.onclick=()=>{const v=k.dataset.k;if(v==='C')padVal=padVal.slice(0,-1);else if(v==='OK'){const n=parseInt(padVal||'0');$('#ov').classList.remove('on');if(padOnOK)padOnOK(n);return;}else if(padVal.length<7)padVal+=v;$('#padDisp').textContent=padVal||'0';});
+$$('#ov .key').forEach(k=>k.onclick=()=>{const v=k.dataset.k;if(v==='C')padVal=padVal.slice(0,-1);else if(v==='OK'){const n=parseInt(padVal||'0');$('#ov').classList.remove('on');if(padOnOK)padOnOK(n);return;}else if(padVal.length<7)padVal+=v;$('#padDisp').textContent=padVal||'0';});
 
 /* ── confirmar ── */
 function renderConfirm(){
@@ -446,6 +502,43 @@ function buildPedidos(){
       `<div class="plines">${meds}</div>`;
     L.appendChild(card);
   });
+}
+
+/* ── admin (acceso oculto: 3 toques en el logo → PIN) ── */
+const ADMINS={'2468':'Alfonso','1357':'Ana'};
+const TINTA_SW={};TINTAS.concat(TINTAS_ESP).forEach(([n,c])=>TINTA_SW[n]=c);
+const BOLSA_SW={};Object.values(BOLSA).flat().forEach(([n,c])=>BOLSA_SW[n]=c);
+let adminWho='',logoTaps=0,logoTimer=null,pinVal='';
+$('#logo').onclick=()=>{logoTaps++;clearTimeout(logoTimer);logoTimer=setTimeout(()=>logoTaps=0,1500);if(logoTaps>=3){logoTaps=0;openPin();}};
+function pinTxt(){return pinVal.replace(/./g,'●').padEnd(4,'·').split('').join(' ');}
+function openPin(){pinVal='';$('#pinDisp').textContent=pinTxt();$('#pinMsg').textContent='';$('#ovPin').classList.add('on');}
+$('#pinClose').onclick=()=>$('#ovPin').classList.remove('on');
+$$('.pinkey').forEach(k=>k.onclick=()=>{
+  const v=k.dataset.k;
+  if(v==='C'){pinVal=pinVal.slice(0,-1);$('#pinDisp').textContent=pinTxt();return;}
+  if(pinVal.length<4)pinVal+=v;
+  $('#pinDisp').textContent=pinTxt();
+  if(pinVal.length===4){const who=ADMINS[pinVal];
+    if(who){setTimeout(()=>{$('#ovPin').classList.remove('on');adminWho=who;$('#adWho').textContent=who;renderAdmin();show('scAdmin');pinVal='';},160);}
+    else{$('#pinMsg').textContent='Código incorrecto';setTimeout(()=>{pinVal='';$('#pinDisp').textContent=pinTxt();$('#pinMsg').textContent='';},900);}}
+});
+$('#adExit').onclick=()=>{scStack.length=0;scStack.push('scHome');show('scHome',false);};
+
+function adBar(name,val,max,sub,swatch){const pct=Math.max(4,val/max*100);const sw=swatch?`<span class="adsw" style="background:${swatch}"></span>`:'';return `<div class="adbrow"><div class="adtop"><span class="adnm">${sw}${name}</span><span class="adv num">${val.toLocaleString('es-AR')}${sub?' · '+sub:''}</span></div><div class="adbar"><span style="width:${pct}%"></span></div></div>`;}
+function rankBars(obj,sw){const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]);if(!e.length)return '<div class="admuted">Sin datos todavía.</div>';const max=Math.max(...e.map(x=>x[1]));return e.map(([n,v])=>adBar(n,v,max,'',sw&&sw[n])).join('');}
+function renderAdmin(){
+  const ops={};let bol=0,imp=0,agua=0,solv=0;const bc={},tc={};
+  sesion.pedidos.forEach(p=>p.lineas.forEach(l=>{const impr=l.qty*l.caras*l.colores;bol+=l.qty;imp+=impr;ops[p.operario]=ops[p.operario]||{bol:0,imp:0};ops[p.operario].bol+=l.qty;ops[p.operario].imp+=impr;if(l.tipo==='Al agua')agua+=l.qty;else solv+=l.qty;if(l.bolsa)bc[l.bolsa]=(bc[l.bolsa]||0)+l.qty;if(l.tinta)tc[l.tinta]=(tc[l.tinta]||0)+l.qty;if(l.colores===2&&l.tinta2)tc[l.tinta2]=(tc[l.tinta2]||0)+l.qty;}));
+  $('#adBol').textContent=bol.toLocaleString('es-AR');$('#adImp').textContent=imp.toLocaleString('es-AR');$('#adPed').textContent=sesion.pedidos.length;
+  const oe=Object.entries(ops).map(([n,v])=>({n,...v})).sort((a,b)=>b.imp-a.imp);
+  const maxI=Math.max(1,...oe.map(o=>o.imp));
+  $('#adOps').innerHTML=oe.length?oe.map(o=>adBar(o.n,o.imp,maxI,o.bol.toLocaleString('es-AR')+' bolsas')).join(''):'<div class="admuted">Sin producción cargada en esta sesión.</div>';
+  const tt=agua+solv;
+  $('#adAgua').textContent=agua.toLocaleString('es-AR');$('#adSolv').textContent=solv.toLocaleString('es-AR');
+  $('#adAguaP').textContent=tt?Math.round(agua/tt*100)+'%':'—';$('#adSolvP').textContent=tt?Math.round(solv/tt*100)+'%':'—';
+  $('#adBolsa').innerHTML=rankBars(bc,BOLSA_SW);$('#adTinta').innerHTML=rankBars(tc,TINTA_SW);
+  const dentro=Object.entries(fichajes).filter(([,f])=>f.estado==='adentro');
+  $('#adFich').innerHTML=dentro.length?dentro.map(([n,f])=>`<div class="fichrow"><span>${n}</span><span class="num">desde ${f.desde}</span></div>`).join(''):'<div class="admuted">Nadie fichado ahora.</div>';
 }
 
 /* init */
