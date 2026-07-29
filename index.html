@@ -87,6 +87,17 @@
   .fichrow{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
   .fichrow:last-child{border:none}
   .fichrow .num{color:var(--gray)}
+  .adped{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .adped:last-child{border:none}
+  .adpedinfo{flex:1;font-size:14px;font-weight:600}
+  .adpedinfo small{display:block;color:var(--gray);font-weight:400;font-size:12px}
+  .adpeddel{border:none;background:#FDEDEB;color:#C24A3C;font-size:16px;font-weight:800;width:34px;height:34px;border-radius:9px;cursor:pointer;flex:none}
+  .adpeddel:active{background:#f8d7d2}
+  .adlive{color:#2E9E5B;font-weight:800}
+  #adPresentes{display:flex;flex-wrap:wrap;gap:8px}
+  .prez{display:inline-flex;flex-direction:column;align-items:center;gap:1px;background:#F0F0F0;color:var(--gray);border-radius:10px;padding:8px 13px;font-size:13.5px;font-weight:700;min-width:64px}
+  .prez.in{background:#E7F7EE;color:#166534;border:1px solid #9BDBB5}
+  .prez small{font-size:10.5px;font-weight:600;opacity:.85}
   button.st{font-family:inherit}
   .st.tap{cursor:pointer}
   .st.tap:active{background:#FFFDF5;border-color:var(--amber)}
@@ -111,6 +122,8 @@
   .tile.sel{background:var(--amber);border-color:var(--amber);color:var(--ink);box-shadow:var(--shadow)}
   .tile .sw{width:22px;height:22px;border-radius:50%;border:1px solid rgba(0,0,0,.18);flex:none}
   .tile.otros{border-style:dashed;color:var(--gray);font-weight:800}
+  .tile.nametile{background:var(--amber);border-color:var(--amber);color:#222222;font-weight:800}
+  .tile.nametile:active{background:var(--amber-d)}
   .tile.tintile{flex-direction:column;gap:7px;min-height:82px;font-size:13.5px;font-weight:700}
   .tile.tintile .sw{width:30px;height:30px}
   .tile.esp{position:relative}
@@ -222,19 +235,21 @@
     <!-- ADMIN -->
     <div class="screen" id="scAdmin">
       <div class="adhead">
-        <div><div class="adttl">Administrador</div><div class="adsub">Sesión · <span id="adWho">—</span></div></div>
+        <div><div class="adttl">Administrador</div><div class="adsub">Sesión · <span id="adWho">—</span> · <span class="adlive">● en vivo</span></div></div>
         <button class="adexit" id="adExit">Salir</button>
       </div>
+      <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adkpis">
         <div class="adkpi"><div class="v num" id="adBol">0</div><div class="k">Bolsas</div></div>
         <div class="adkpi"><div class="v num" id="adImp">0</div><div class="k">Impresiones</div></div>
         <div class="adkpi"><div class="v num" id="adPed">0</div><div class="k">Pedidos</div></div>
       </div>
+      <div class="adcard"><div class="adh">Trabajos cargados<small>tocá ✕ para borrar (útil para limpiar pruebas)</small></div><div class="adbd" id="adPedidos"></div></div>
       <div class="adcard"><div class="adh">Producción por operario<small>ordenado por impresiones (caras × colores)</small></div><div class="adbd" id="adOps"></div></div>
       <div class="adcard"><div class="adh">Tipo de tinta</div><div class="adbd"><div class="adsplit"><div class="adhalf"><div class="v num" id="adAgua">0</div><div class="k">Al agua</div><div class="p" id="adAguaP">—</div></div><div class="adhalf"><div class="v num" id="adSolv">0</div><div class="k">Solvente Eva Flex</div><div class="p" id="adSolvP">—</div></div></div></div></div>
+      <div class="adcard"><div class="adh">Por tipo de bolsa</div><div class="adbd" id="adTipoBolsa"></div></div>
       <div class="adcard"><div class="adh">Color de bolsa</div><div class="adbd" id="adBolsa"></div></div>
       <div class="adcard"><div class="adh">Color de tinta</div><div class="adbd" id="adTinta"></div></div>
-      <div class="adcard"><div class="adh">Fichados ahora</div><div class="adbd" id="adFich"></div></div>
     </div>
 
     <!-- ARMAR -->
@@ -396,7 +411,7 @@ $$('.horaOpt').forEach(b=>b.onclick=()=>{const p=b.dataset.t.split(':');horaOfic
 
 /* ── operarios ── */
 function tile(txt,cls){const b=document.createElement('button');b.className='tile '+(cls||'');b.textContent=txt;return b;}
-function buildWho(){const g=$('#whoGrid');g.innerHTML='';IMPRESORES.forEach(n=>{const b=tile(n);b.onclick=()=>pick(n);g.appendChild(b);});const o=tile('Otros','otros');o.onclick=()=>{const gg=$('#otrosGrid');gg.innerHTML='';EQUIPO.forEach(n=>{const b=tile(n);b.onclick=()=>pick(n);gg.appendChild(b);});show('scOtros');};g.appendChild(o);}
+function buildWho(){const g=$('#whoGrid');g.innerHTML='';IMPRESORES.forEach(n=>{const b=tile(n,'nametile');b.onclick=()=>pick(n);g.appendChild(b);});const o=tile('Otros','otros');o.onclick=()=>{const gg=$('#otrosGrid');gg.innerHTML='';EQUIPO.forEach(n=>{const b=tile(n,'nametile');b.onclick=()=>pick(n);gg.appendChild(b);});show('scOtros');};g.appendChild(o);}
 function pick(n){cur.operario=n;$('#whoName').textContent=n;startBuild();}
 
 /* ── armar ── */
@@ -523,16 +538,19 @@ $$('.pinkey').forEach(k=>k.onclick=()=>{
   if(pinVal.length<4)pinVal+=v;
   $('#pinDisp').textContent=pinTxt();
   if(pinVal.length===4){const who=ADMINS[pinVal];
-    if(who){setTimeout(()=>{$('#ovPin').classList.remove('on');adminWho=who;$('#adWho').textContent=who;renderAdmin();show('scAdmin');pinVal='';},160);}
+    if(who){setTimeout(()=>{$('#ovPin').classList.remove('on');adminWho=who;$('#adWho').textContent=who;renderAdmin();show('scAdmin');startAdminRefresh();pinVal='';},160);}
     else{$('#pinMsg').textContent='Código incorrecto';setTimeout(()=>{pinVal='';$('#pinDisp').textContent=pinTxt();$('#pinMsg').textContent='';},900);}}
 });
-$('#adExit').onclick=()=>{scStack.length=0;scStack.push('scHome');show('scHome',false);};
+let adminTimer=null;
+function startAdminRefresh(){clearInterval(adminTimer);adminTimer=setInterval(async()=>{if(document.getElementById('scAdmin').classList.contains('on')){await loadData();renderAdmin();}},15000);}
+function stopAdminRefresh(){clearInterval(adminTimer);adminTimer=null;}
+$('#adExit').onclick=()=>{stopAdminRefresh();scStack.length=0;scStack.push('scHome');show('scHome',false);};
 
 function adBar(name,val,max,sub,swatch){const pct=Math.max(4,val/max*100);const sw=swatch?`<span class="adsw" style="background:${swatch}"></span>`:'';return `<div class="adbrow"><div class="adtop"><span class="adnm">${sw}${name}</span><span class="adv num">${val.toLocaleString('es-AR')}${sub?' · '+sub:''}</span></div><div class="adbar"><span style="width:${pct}%"></span></div></div>`;}
 function rankBars(obj,sw){const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]);if(!e.length)return '<div class="admuted">Sin datos todavía.</div>';const max=Math.max(...e.map(x=>x[1]));return e.map(([n,v])=>adBar(n,v,max,'',sw&&sw[n])).join('');}
 function renderAdmin(){
-  const ops={};let bol=0,imp=0,agua=0,solv=0;const bc={},tc={};
-  sesion.pedidos.forEach(p=>p.lineas.forEach(l=>{const impr=l.qty*l.caras*l.colores;bol+=l.qty;imp+=impr;ops[p.operario]=ops[p.operario]||{bol:0,imp:0};ops[p.operario].bol+=l.qty;ops[p.operario].imp+=impr;if(l.tipo==='Al agua')agua+=l.qty;else solv+=l.qty;if(l.bolsa)bc[l.bolsa]=(bc[l.bolsa]||0)+l.qty;if(l.tinta)tc[l.tinta]=(tc[l.tinta]||0)+l.qty;if(l.colores===2&&l.tinta2)tc[l.tinta2]=(tc[l.tinta2]||0)+l.qty;}));
+  const ops={};let bol=0,imp=0,agua=0,solv=0;const bc={},tc={},tb={};
+  sesion.pedidos.forEach(p=>p.lineas.forEach(l=>{const impr=l.qty*l.caras*l.colores;bol+=l.qty;imp+=impr;ops[p.operario]=ops[p.operario]||{bol:0,imp:0};ops[p.operario].bol+=l.qty;ops[p.operario].imp+=impr;if(l.tipo==='Al agua')agua+=l.qty;else solv+=l.qty;if(l.bolsa)bc[l.bolsa]=(bc[l.bolsa]||0)+l.qty;if(l.tinta)tc[l.tinta]=(tc[l.tinta]||0)+l.qty;if(l.colores===2&&l.tinta2)tc[l.tinta2]=(tc[l.tinta2]||0)+l.qty;const pn=(PRODUCTOS.find(x=>x.id===l.prod)||{}).name||l.prod;tb[pn]=(tb[pn]||0)+l.qty;}));
   $('#adBol').textContent=bol.toLocaleString('es-AR');$('#adImp').textContent=imp.toLocaleString('es-AR');$('#adPed').textContent=sesion.pedidos.length;
   const oe=Object.entries(ops).map(([n,v])=>({n,...v})).sort((a,b)=>b.imp-a.imp);
   const maxI=Math.max(1,...oe.map(o=>o.imp));
@@ -540,9 +558,16 @@ function renderAdmin(){
   const tt=agua+solv;
   $('#adAgua').textContent=agua.toLocaleString('es-AR');$('#adSolv').textContent=solv.toLocaleString('es-AR');
   $('#adAguaP').textContent=tt?Math.round(agua/tt*100)+'%':'—';$('#adSolvP').textContent=tt?Math.round(solv/tt*100)+'%':'—';
-  $('#adBolsa').innerHTML=rankBars(bc,BOLSA_SW);$('#adTinta').innerHTML=rankBars(tc,TINTA_SW);
-  const dentro=Object.entries(fichajes).filter(([,f])=>f.estado==='adentro');
-  $('#adFich').innerHTML=dentro.length?dentro.map(([n,f])=>`<div class="fichrow"><span>${n}</span><span class="num">desde ${f.desde}</span></div>`).join(''):'<div class="admuted">Nadie fichado ahora.</div>';
+  $('#adTipoBolsa').innerHTML=rankBars(tb);$('#adBolsa').innerHTML=rankBars(bc,BOLSA_SW);$('#adTinta').innerHTML=rankBars(tc,TINTA_SW);
+  $('#adPresentes').innerHTML=EQUIPO.map(n=>{const f=fichajes[n];const inn=f&&f.estado==='adentro';return `<div class="prez${inn?' in':''}">${n}${inn?`<small>${f.desde}</small>`:''}</div>`;}).join('');
+  const pr=sesion.pedidos.map((p,i)=>{const tot=p.lineas.reduce((a,l)=>a+l.qty,0);return `<div class="adped"><div class="adpedinfo"><b>#${p.numero}</b> · ${p.operario}${p.compartido?' · compartido':''}<small>${tot.toLocaleString('es-AR')} bolsas</small></div><button class="adpeddel" data-i="${i}">✕</button></div>`;});
+  $('#adPedidos').innerHTML=pr.length?pr.reverse().join(''):'<div class="admuted">Sin pedidos cargados.</div>';
+  $('#adPedidos').querySelectorAll('.adpeddel').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;const p=sesion.pedidos[i];if(p&&confirm('¿Borrar el pedido #'+p.numero+'? No se puede deshacer.'))deletePedido(i);});
+}
+async function deletePedido(i){
+  const p=sesion.pedidos[i];if(!p)return;
+  if(db&&p.id){try{const {error}=await db.from('est_pedidos').delete().eq('id',p.id);if(error)throw error;}catch(err){console.error('deletePedido',err);toastMsg('⚠ No se pudo borrar en la nube');}}
+  sesion.pedidos.splice(i,1);refreshHome();renderAdmin();
 }
 
 /* ── Supabase: guardar y cargar ── */
@@ -552,6 +577,7 @@ async function savePedido(ped){
   try{
     const {data,error}=await db.from('est_pedidos').insert({numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso'}).select().single();
     if(error)throw error;
+    ped.id=data.id;
     const rows=ped.lineas.map(l=>({pedido_id:data.id,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty}));
     const {error:e2}=await db.from('est_lineas').insert(rows);
     if(e2)throw e2;
@@ -563,7 +589,7 @@ async function loadData(){
   try{
     const t=new Date();const start=new Date(t.getFullYear(),t.getMonth(),t.getDate()).toISOString();
     const {data:peds}=await db.from('est_pedidos').select('*, est_lineas(*)').gte('created_at',start).order('created_at',{ascending:true});
-    if(peds)sesion.pedidos=peds.map(p=>({numero:p.numero,operario:p.operario,compartido:p.compartido,estado:p.estado,lineas:(p.est_lineas||[]).map(l=>({prod:l.producto,med:l.medida,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras,colores:l.colores,qty:l.cantidad}))}));
+    if(peds)sesion.pedidos=peds.map(p=>({id:p.id,numero:p.numero,operario:p.operario,compartido:p.compartido,estado:p.estado,lineas:(p.est_lineas||[]).map(l=>({prod:l.producto,med:l.medida,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras,colores:l.colores,qty:l.cantidad}))}));
     const todayISO=start.slice(0,10);
     const {data:fs}=await db.from('est_fichajes').select('*').eq('fecha',todayISO).order('created_at',{ascending:true});
     if(fs){fichajes={};fs.forEach(e=>{const f=fichajes[e.operario]||{estado:'afuera',desde:null,eventos:[]};if(e.tipo==='entrada'){f.estado='adentro';f.desde=e.hora;}else{f.estado='afuera';f.desde=null;}f.eventos.push({tipo:e.tipo,hhmm:e.hora});fichajes[e.operario]=f;});}
