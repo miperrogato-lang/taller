@@ -108,6 +108,18 @@
   .prevrow{font-size:13.5px;font-weight:700;padding:6px 0;border-top:1px solid #FCE9A8}
   .prevrow:first-of-type{border-top:none}
   .prevrow small{display:block;color:var(--gray);font-weight:400;font-size:12.5px;margin-top:1px}
+  .horarow{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px;gap:8px}
+  .horarow:last-child{border:none}
+  .horarow .hn{font-weight:700}
+  .horarow .hv{font-size:13.5px;color:var(--gray);font-weight:600;text-align:right}
+  .horarow .hv b{color:var(--amber-d)}
+  .horarow .hnm{font-size:11px}
+  .feradd{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap}
+  .feradd input{flex:1;min-width:110px;padding:9px 10px;border:1px solid var(--line2);border-radius:9px;font-family:inherit;font-size:14px}
+  .feradd button{padding:9px 15px;border:none;border-radius:9px;background:var(--amber);color:#222222;font-family:inherit;font-weight:800;font-size:14px;cursor:pointer}
+  .ferrow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px;font-weight:600}
+  .ferrow:last-child{border:none}
+  .ferdel{border:none;background:#FDEDEB;color:#C24A3C;font-size:15px;font-weight:800;width:30px;height:30px;border-radius:8px;cursor:pointer}
   .bcard{background:var(--surf);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
   .bch{padding:11px 14px;background:#FFFDF5;border-bottom:1px solid var(--line);font-size:15px;font-weight:800;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
   .bch span:last-child{font-size:12px;color:var(--gray);font-weight:600;text-align:right}
@@ -262,6 +274,7 @@
         <button class="adexit" id="adExit">Salir</button>
       </div>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
+      <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
         <div class="adkpi"><div class="v num" id="adBol">0</div><div class="k">Bolsas</div></div>
         <div class="adkpi"><div class="v num" id="adImp">0</div><div class="k">Impresiones</div></div>
@@ -273,6 +286,10 @@
       <div class="adcard"><div class="adh">Por tipo de bolsa</div><div class="adbd" id="adTipoBolsa"></div></div>
       <div class="adcard"><div class="adh">Color de bolsa</div><div class="adbd" id="adBolsa"></div></div>
       <div class="adcard"><div class="adh">Color de tinta</div><div class="adbd" id="adTinta"></div></div>
+      <div class="adcard"><div class="adh">Feriados (calendario interno)<small>los nacionales fijos se reconocen solos</small></div><div class="adbd">
+        <div class="feradd"><input type="date" id="ferFecha"><input type="text" id="ferNombre" placeholder="Nombre (opcional)"><button id="ferAdd">Agregar</button></div>
+        <div id="adFeriados"></div>
+      </div></div>
     </div>
 
     <!-- ARMAR -->
@@ -593,6 +610,7 @@ function renderAdmin(){
   $('#adAguaP').textContent=tt?Math.round(agua/tt*100)+'%':'—';$('#adSolvP').textContent=tt?Math.round(solv/tt*100)+'%':'—';
   $('#adTipoBolsa').innerHTML=rankBars(tb);$('#adBolsa').innerHTML=rankBars(bc,BOLSA_SW);$('#adTinta').innerHTML=rankBars(tc,TINTA_SW);
   $('#adPresentes').innerHTML=EQUIPO.map(n=>{const f=fichajes[n];const inn=f&&f.estado==='adentro';return `<div class="prez${inn?' in':''}">${n}${inn?`<small>${f.desde}</small>`:''}</div>`;}).join('');
+  renderHoras();renderFeriados();
   const pr=sesion.pedidos.map((p,i)=>{const tot=p.lineas.reduce((a,l)=>a+l.qty,0);return `<div class="adped"><div class="adpedinfo"><b>#${p.numero}</b> · ${p.operario}${p.compartido?' · compartido':''}<small>${tot.toLocaleString('es-AR')} bolsas</small></div><button class="adpeddel" data-i="${i}">✕</button></div>`;});
   $('#adPedidos').innerHTML=pr.length?pr.reverse().join(''):'<div class="admuted">Sin pedidos cargados.</div>';
   $('#adPedidos').querySelectorAll('.adpeddel').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;const p=sesion.pedidos[i];if(p&&confirm('¿Borrar el pedido #'+p.numero+'? No se puede deshacer.'))deletePedido(i);});
@@ -645,9 +663,34 @@ async function loadData(){
     const todayISO=start.slice(0,10);
     const {data:fs}=await db.from('est_fichajes').select('*').eq('fecha',todayISO).order('created_at',{ascending:true});
     if(fs){fichajes={};fs.forEach(e=>{const f=fichajes[e.operario]||{estado:'afuera',desde:null,eventos:[]};if(e.tipo==='entrada'){f.estado='adentro';f.desde=e.hora;}else{f.estado='afuera';f.desde=null;}f.eventos.push({tipo:e.tipo,hhmm:e.hora});fichajes[e.operario]=f;});}
+    try{const {data:fe}=await db.from('est_feriados').select('*').order('fecha');feriadosDB=fe||[];}catch(e){}
     refreshHome();
   }catch(err){console.error('loadData',err);}
 }
+
+/* ── feriados + horas (Tanda B) ── */
+let feriadosDB=[];
+const FERIADOS_NAC=[['01-01','Año Nuevo'],['03-24','Memoria'],['04-02','Malvinas'],['05-01','Trabajador'],['05-25','Revolución de Mayo'],['06-20','Belgrano'],['07-09','Independencia'],['12-08','Inmaculada'],['12-25','Navidad']];
+function isFeriado(d){const md=String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');if(FERIADOS_NAC.some(f=>f[0]===md))return true;const iso=d.getFullYear()+'-'+md;return feriadosDB.some(f=>f.fecha===iso);}
+function toMinHM(hhmm){const p=String(hhmm).split(':');return (+p[0])*60+(+p[1]);}
+function workedMin(eventos){let total=0,open=null;(eventos||[]).forEach(e=>{if(e.tipo==='entrada')open=toMinHM(e.hhmm);else if(e.tipo==='salida'&&open!=null){total+=toMinHM(e.hhmm)-open;open=null;}});if(open!=null){const now=new Date();total+=(now.getHours()*60+now.getMinutes())-open;}return Math.max(0,total);}
+function fmtHM(m){return Math.floor(m/60)+'h '+String(m%60).padStart(2,'0')+'m';}
+function renderHoras(){
+  const today=new Date();const dow=today.getDay();const allExtra=(dow===0||dow===6||isFeriado(today));
+  const rows=EQUIPO.map(n=>{const f=fichajes[n];if(!f||!f.eventos||!f.eventos.length)return null;const w=workedMin(f.eventos);let norm,ext;if(allExtra){norm=0;ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}return{n,w,norm,ext};}).filter(Boolean).sort((a,b)=>b.w-a.w);
+  const tag=$('#adHorasTag');if(tag)tag.textContent=allExtra?((dow===0||dow===6)?'fin de semana · todo extra':'feriado · todo extra'):'L-V · 6h normal + resto extra';
+  const el=$('#adHoras');if(el)el.innerHTML=rows.length?rows.map(r=>`<div class="horarow"><span class="hn">${r.n}</span><span class="hv">${fmtHM(r.norm)} <span class="hnm">normal</span> · <b>${fmtHM(r.ext)} extra</b></span></div>`).join(''):'<div class="admuted">Nadie fichó todavía hoy.</div>';
+}
+function renderFeriados(){
+  const el=$('#adFeriados');if(!el)return;
+  const list=feriadosDB.slice().sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha)));
+  el.innerHTML=list.length?list.map(f=>`<div class="ferrow"><span>${f.fecha}${f.nombre?' · '+f.nombre:''}</span><button class="ferdel" data-id="${f.id}">✕</button></div>`).join(''):'<div class="admuted">Sin feriados internos. Los nacionales fijos ya se reconocen solos.</div>';
+  el.querySelectorAll('.ferdel').forEach(b=>b.onclick=()=>delFeriado(b.dataset.id));
+}
+async function loadFeriados(){if(db){try{const {data}=await db.from('est_feriados').select('*').order('fecha');feriadosDB=data||[];}catch(e){console.error(e);}}renderFeriados();renderHoras();}
+async function addFeriado(){const fecha=$('#ferFecha').value;const nombre=$('#ferNombre').value.trim();if(!fecha)return;if(db){try{const {error}=await db.from('est_feriados').insert({fecha,nombre:nombre||null,tipo:'interno'});if(error)throw error;}catch(e){console.error(e);toastMsg('⚠ No se pudo guardar el feriado');return;}}else{feriadosDB.push({id:'tmp'+Date.now(),fecha,nombre,tipo:'interno'});}$('#ferNombre').value='';$('#ferFecha').value='';loadFeriados();}
+async function delFeriado(id){if(db&&!String(id).startsWith('tmp')){try{await db.from('est_feriados').delete().eq('id',id);}catch(e){console.error(e);}}feriadosDB=feriadosDB.filter(f=>String(f.id)!==String(id));renderFeriados();renderHoras();}
+$('#ferAdd').onclick=addFeriado;
 
 /* init */
 refreshHome();scStack.push('scHome');loadData();
