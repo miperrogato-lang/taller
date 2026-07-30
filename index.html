@@ -117,6 +117,17 @@
   .tabs{display:flex;gap:6px;background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:5px;margin-bottom:16px}
   .tabs button{flex:1;background:none;border:none;font-family:inherit;font-size:14px;font-weight:800;color:var(--gray);padding:10px 4px;border-radius:8px;cursor:pointer}
   .tabs button.on{background:var(--amber);color:#222222}
+  .hlbl{display:block;font-size:12px;font-weight:800;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;margin:10px 0 6px}
+  .hsel{width:100%;padding:12px;border:1px solid var(--line2);border-radius:11px;font-family:inherit;font-size:15px;background:var(--surf);color:var(--ink)}
+  .hrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-size:14px;font-weight:600}
+  .hrow input{padding:10px;border:1px solid var(--line2);border-radius:10px;font-family:inherit;font-size:15px}
+  .hsum{display:flex;gap:10px;margin-bottom:12px}
+  .hsum>div{flex:1;text-align:center;background:var(--bg);border-radius:10px;padding:10px}
+  .hsum .v{font-size:16px;font-weight:800}
+  .hsum .k{font-size:11px;color:var(--gray);font-weight:700;margin-top:2px}
+  .hday{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+  .hday:first-child{border-top:none}
+  .hday b{color:var(--amber-d)}
   .buscarbtn{width:100%;border:2px solid var(--line2);background:var(--surf);color:var(--ink);font-family:inherit;font-size:16px;font-weight:800;padding:14px;border-radius:14px;cursor:pointer;margin-bottom:20px}
   .buscarbtn:active{background:var(--bg)}
   .contbtn{width:100%;min-height:56px;border-radius:13px;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer;border:2px solid var(--line2);background:var(--surf);color:var(--ink);margin-bottom:10px}
@@ -294,6 +305,7 @@
       </div>
       <button class="histbtn" id="histBtn">Historial de jornadas ›</button>
       <button class="histbtn" id="anaBtn">Analítica de producción ›</button>
+      <button class="histbtn" id="horBtn">Horas del personal ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
@@ -369,6 +381,35 @@
       <div class="adcard"><div class="adh">Color de bolsa</div><div class="adbd" id="anaColB"></div></div>
       <div class="adcard"><div class="adh">Color de tinta</div><div class="adbd" id="anaColT"></div></div>
       <div class="adcard"><div class="adh">Producción por operario</div><div class="adbd" id="anaOps"></div></div>
+    </div>
+
+    <!-- HORAS DEL PERSONAL -->
+    <div class="screen" id="scHoras">
+      <div class="adhead">
+        <div><div class="adttl">Horas del personal</div><div class="adsub">respaldo de liquidación</div></div>
+        <button class="adexit" id="horBack">‹ Volver</button>
+      </div>
+      <div class="adcard"><div class="adbd">
+        <label class="hlbl">Empleado</label>
+        <select id="horEmp" class="hsel"></select>
+        <label class="hlbl">Período</label>
+        <div class="tabs" id="horTabs">
+          <button data-r="semana" class="on">Semana</button>
+          <button data-r="quincena">Quincena</button>
+          <button data-r="mes">Mes</button>
+          <button data-r="custom">Personaliz.</button>
+        </div>
+        <div id="horCustom" style="display:none">
+          <div class="hrow"><span>Desde</span><input type="date" id="horDesde"></div>
+          <div class="hrow"><span>Hasta</span><input type="date" id="horHasta"></div>
+        </div>
+        <button class="hero-btn half dark" id="horCalc" style="min-height:52px;font-size:16px;width:100%;margin-top:8px">Calcular</button>
+      </div></div>
+      <div id="horRes"></div>
+      <div id="horExport" style="display:none">
+        <button class="contbtn primary" id="horPdf">📄 Exportar PDF</button>
+        <button class="contbtn" id="horExcel">📊 Exportar Excel</button>
+      </div>
     </div>
 
     <!-- ARMAR -->
@@ -908,6 +949,76 @@ $('#repBtn').onclick=()=>$('#ovReporte').classList.add('on');
 $('#repClose').onclick=()=>$('#ovReporte').classList.remove('on');
 $('#repPdf').onclick=()=>generarReporte('pdf');
 $('#repExcel').onclick=()=>generarReporte('excel');
+
+/* ── Horas del Personal (solo lectura · reutiliza fichajes) ── */
+function workedMinClosed(eventos){let total=0,open=null;(eventos||[]).forEach(e=>{if(e.tipo==='entrada')open=toMinHM(e.hhmm);else if(e.tipo==='salida'&&open!=null){total+=toMinHM(e.hhmm)-open;open=null;}});return Math.max(0,total);}
+const HorasService={
+  hm(min){return Math.floor(min/60)+'h '+String(Math.round(min%60)).padStart(2,'0')+'m';},
+  hdec(min){return Math.round(min/60*100)/100;},
+  async modelo(desde,hasta,emp,lbl){
+    const res={desde,hasta,label:lbl,generado:new Date(),empleados:[]};
+    if(!db)return res;
+    try{
+      let q=db.from('est_fichajes').select('*').gte('fecha',desde).lte('fecha',hasta).order('fecha',{ascending:true}).order('created_at',{ascending:true});
+      if(emp&&emp!=='__all__')q=q.eq('operario',emp);
+      const {data}=await q;
+      const byOpDia={};(data||[]).forEach(e=>{const k=e.operario+'|'+e.fecha;(byOpDia[k]=byOpDia[k]||[]).push({tipo:e.tipo,hhmm:e.hora});});
+      const ops={};
+      Object.entries(byOpDia).forEach(([k,ev])=>{const i=k.indexOf('|');const op=k.slice(0,i),fecha=k.slice(i+1);const w=workedMinClosed(ev);if(w<=0)return;
+        const dt=new Date(fecha+'T12:00:00');const dow=dt.getDay();const allExtra=(dow===0||dow===6||isFeriado(dt));
+        let norm,ext;if(allExtra){norm=0;ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}
+        (ops[op]=ops[op]||{dias:[],tN:0,tE:0}).dias.push({fecha,worked:w,normal:norm,extra:ext,tipo:allExtra?((dow===0||dow===6)?'fin de semana':'feriado'):'normal'});
+        ops[op].tN+=norm;ops[op].tE+=ext;});
+      res.empleados=Object.entries(ops).map(([op,v])=>({empleado:op,dias:v.dias.sort((a,b)=>a.fecha<b.fecha?-1:1),totNormal:v.tN,totExtra:v.tE,diasTrab:v.dias.length,totMin:v.tN+v.tE})).sort((a,b)=>a.empleado.localeCompare(b.empleado));
+    }catch(e){console.error('HorasService',e);}
+    return res;
+  },
+  pdf(m){
+    const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});const W=doc.internal.pageSize.getWidth(),Hp=doc.internal.pageSize.getHeight();
+    doc.setFillColor(34,34,34);doc.rect(0,0,W,64,'F');
+    doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('Horas del Personal',40,30);
+    doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(255,193,7);doc.text('Respaldo de liquidación',40,48);
+    doc.setTextColor(255,255,255);doc.setFontSize(9);doc.text(m.label+': '+m.desde+' a '+m.hasta,W-40,30,{align:'right'});doc.text('Generado: '+m.generado.toLocaleString('es-AR'),W-40,46,{align:'right'});
+    let y=88;doc.setTextColor(34,34,34);
+    doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('Resumen del período',40,y);
+    doc.autoTable({startY:y+6,theme:'grid',styles:{fontSize:9,cellPadding:4},headStyles:{fillColor:[245,245,245],textColor:[34,34,34]},head:[['Empleado','Días','Hs normales','Hs extras','Total']],body:m.empleados.map(e=>[e.empleado,e.diasTrab,HorasService.hm(e.totNormal),HorasService.hm(e.totExtra),HorasService.hm(e.totMin)])});
+    y=doc.lastAutoTable.finalY+18;
+    m.empleados.forEach(e=>{if(y>Hp-100){doc.addPage();y=48;}doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(34,34,34);doc.text(e.empleado,40,y);
+      doc.autoTable({startY:y+6,theme:'striped',styles:{fontSize:9,cellPadding:4},headStyles:{fillColor:[255,193,7],textColor:[34,34,34]},head:[['Fecha','Tipo','Normales','Extras','Total']],body:e.dias.map(d=>[d.fecha,d.tipo,HorasService.hm(d.normal),HorasService.hm(d.extra),HorasService.hm(d.worked)]),foot:[['','Total',HorasService.hm(e.totNormal),HorasService.hm(e.totExtra),HorasService.hm(e.totMin)]],footStyles:{fillColor:[240,240,240],textColor:[34,34,34],fontStyle:'bold'}});
+      y=doc.lastAutoTable.finalY+16;});
+    const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(140,140,140);doc.text('Horas del Personal · respaldo de liquidación · '+m.generado.toLocaleString('es-AR'),40,Hp-20);doc.text('Pág. '+i+'/'+pages,W-40,Hp-20,{align:'right'});}
+    doc.save('Horas_'+m.desde+'_'+m.hasta+'.pdf');
+  },
+  excel(m){
+    const XLSX=window.XLSX;const wb=XLSX.utils.book_new();
+    const resumen=[['Horas del Personal — respaldo de liquidación'],['Período',m.label+' ('+m.desde+' a '+m.hasta+')'],['Generado',m.generado.toLocaleString('es-AR')],[],['Empleado','Días','Hs normales','Hs extras','Total (hs)']];
+    m.empleados.forEach(e=>resumen.push([e.empleado,e.diasTrab,HorasService.hdec(e.totNormal),HorasService.hdec(e.totExtra),HorasService.hdec(e.totMin)]));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(resumen),'Resumen');
+    const det=[['Empleado','Fecha','Tipo día','Hs normales','Hs extras','Total (hs)']];
+    m.empleados.forEach(e=>e.dias.forEach(d=>det.push([e.empleado,d.fecha,d.tipo,HorasService.hdec(d.normal),HorasService.hdec(d.extra),HorasService.hdec(d.worked)])));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(det),'Detalle');
+    XLSX.writeFile(wb,'Horas_'+m.desde+'_'+m.hasta+'.xlsx');
+  }
+};
+let horModelo=null,horRango='semana';
+$('#horBtn').onclick=()=>{const s=$('#horEmp');s.innerHTML='<option value="__all__">Todos los empleados</option>'+EQUIPO.map(n=>`<option value="${n}">${n}</option>`).join('');horModelo=null;$('#horRes').innerHTML='';$('#horExport').style.display='none';show('scHoras');};
+$('#horBack').onclick=()=>show('scAdmin',false);
+$('#horTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...$('#horTabs').children].forEach(x=>x.classList.toggle('on',x===b));horRango=b.dataset.r;$('#horCustom').style.display=horRango==='custom'?'block':'none';});
+function horRangoFechas(){const now=new Date();const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  if(horRango==='semana'){const off=(now.getDay()+6)%7;return[iso(new Date(now.getFullYear(),now.getMonth(),now.getDate()-off)),iso(now),'Semana'];}
+  if(horRango==='quincena'){const desde=now.getDate()<=15?new Date(now.getFullYear(),now.getMonth(),1):new Date(now.getFullYear(),now.getMonth(),16);return[iso(desde),iso(now),'Quincena'];}
+  if(horRango==='mes'){return[iso(new Date(now.getFullYear(),now.getMonth(),1)),iso(now),'Mes'];}
+  return[$('#horDesde').value,$('#horHasta').value,'Personalizado'];}
+$('#horCalc').onclick=async()=>{const r=horRangoFechas();if(!r[0]||!r[1]){toastMsg('Elegí las fechas');return;}
+  $('#horRes').innerHTML='<div class="admuted" style="padding:16px">Calculando…</div>';$('#horExport').style.display='none';
+  horModelo=await HorasService.modelo(r[0],r[1],$('#horEmp').value,r[2]);renderHorasRes(horModelo);
+  $('#horExport').style.display=horModelo.empleados.length?'block':'none';};
+function renderHorasRes(m){
+  if(!m.empleados.length){$('#horRes').innerHTML='<div class="admuted" style="padding:16px">Sin fichajes cerrados en el período.</div>';return;}
+  $('#horRes').innerHTML=m.empleados.map(e=>{const dias=e.dias.map(d=>`<div class="hday"><span>${d.fecha.slice(5)}${d.tipo!=='normal'?' · '+d.tipo:''}</span><span class="num">${HorasService.hm(d.normal)} + <b>${HorasService.hm(d.extra)}</b></span></div>`).join('');return `<div class="adcard"><div class="adh">${e.empleado}<small>${e.diasTrab} días · ${HorasService.hm(e.totMin)} total</small></div><div class="adbd"><div class="hsum"><div><div class="v num">${HorasService.hm(e.totNormal)}</div><div class="k">Normales</div></div><div><div class="v num">${HorasService.hm(e.totExtra)}</div><div class="k">Extras</div></div><div><div class="v num">${e.diasTrab}</div><div class="k">Días</div></div></div>${dias}</div></div>`;}).join('');
+}
+$('#horPdf').onclick=()=>{if(horModelo&&horModelo.empleados.length)HorasService.pdf(horModelo);};
+$('#horExcel').onclick=()=>{if(horModelo&&horModelo.empleados.length)HorasService.excel(horModelo);};
 
 /* ── Supabase: guardar y cargar ── */
 function toastMsg(txt){const t=$('#toast');t.textContent=txt;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200);}
