@@ -114,6 +114,9 @@
   .calcell.hoy{outline:2px solid var(--ink);outline-offset:-2px}
   .calcell.act:active{background:var(--amber-d)}
   .prezwrap{display:flex;flex-wrap:wrap;gap:8px}
+  .tabs{display:flex;gap:6px;background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:5px;margin-bottom:16px}
+  .tabs button{flex:1;background:none;border:none;font-family:inherit;font-size:14px;font-weight:800;color:var(--gray);padding:10px 4px;border-radius:8px;cursor:pointer}
+  .tabs button.on{background:var(--amber);color:#222222}
   .buscarbtn{width:100%;border:2px solid var(--line2);background:var(--surf);color:var(--ink);font-family:inherit;font-size:16px;font-weight:800;padding:14px;border-radius:14px;cursor:pointer;margin-bottom:20px}
   .buscarbtn:active{background:var(--bg)}
   .contbtn{width:100%;min-height:56px;border-radius:13px;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer;border:2px solid var(--line2);background:var(--surf);color:var(--ink);margin-bottom:10px}
@@ -290,6 +293,7 @@
         <button class="adexit" id="adExit">Salir</button>
       </div>
       <button class="histbtn" id="histBtn">Historial de jornadas ›</button>
+      <button class="histbtn" id="anaBtn">Analítica de producción ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
@@ -339,6 +343,31 @@
       <div class="adcard"><div class="adh">Por tipo de bolsa</div><div class="adbd" id="jorTipo"></div></div>
       <div class="adcard"><div class="adh">Producción por operario</div><div class="adbd" id="jorPorOp"></div></div>
       <div class="adcard"><div class="adh">Pedidos del día</div><div class="adbd" id="jorPedidos"></div></div>
+    </div>
+
+    <!-- ANALÍTICA -->
+    <div class="screen" id="scAnalitica">
+      <div class="adhead">
+        <div><div class="adttl">Analítica de producción</div><div class="adsub" id="anaLbl">—</div></div>
+        <button class="adexit" id="anaBack">‹ Volver</button>
+      </div>
+      <div class="tabs" id="anaTabs">
+        <button data-p="semana">Semana</button>
+        <button data-p="mes" class="on">Mes</button>
+        <button data-p="todo">Todo</button>
+      </div>
+      <div class="adkpis">
+        <div class="adkpi"><div class="v num" id="anaBol">0</div><div class="k">Bolsas</div></div>
+        <div class="adkpi"><div class="v num" id="anaImp">0</div><div class="k">Impresiones</div></div>
+        <div class="adkpi"><div class="v num" id="anaPed">0</div><div class="k">Pedidos</div></div>
+      </div>
+      <div class="adcard"><div class="adh">Tendencia<small>bolsas por día</small></div><div class="adbd" id="anaTend"></div></div>
+      <div class="adcard"><div class="adh">Materiales más usados</div><div class="adbd" id="anaMat"></div></div>
+      <div class="adcard"><div class="adh">Medidas más fabricadas</div><div class="adbd" id="anaMed"></div></div>
+      <div class="adcard"><div class="adh">Combinaciones más producidas<small>material · medida · color</small></div><div class="adbd" id="anaComb"></div></div>
+      <div class="adcard"><div class="adh">Color de bolsa</div><div class="adbd" id="anaColB"></div></div>
+      <div class="adcard"><div class="adh">Color de tinta</div><div class="adbd" id="anaColT"></div></div>
+      <div class="adcard"><div class="adh">Producción por operario</div><div class="adbd" id="anaOps"></div></div>
     </div>
 
     <!-- ARMAR -->
@@ -747,6 +776,48 @@ function openJornada(dia){
   $('#jorPorOp').innerHTML=rankBars(r.porOperario);
   $('#jorPedidos').innerHTML=pedidos.length?pedidos.map(p=>{const dt=new Date(p.created_at);const fh=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');const lin=(p.est_lineas||[]).map(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;return `<div class="bline"><b>${(l.cantidad||0).toLocaleString('es-AR')}</b> ${nm} ${l.medida}<small>bolsa ${l.color_bolsa||'—'} · ${cols||'—'} · ${l.tipo_tinta||'—'}</small></div>`;}).join('');return `<div class="bcard"><div class="bch"><span><b>#${p.numero}</b>${p.compartido?' · compartido':''}</span><span>${fh} · ${p.operario}</span></div>${lin}</div>`;}).join(''):'<div class="admuted">Sin pedidos.</div>';
   show('scJornada');
+}
+
+/* ── Analítica de producción (Etapa 2 · solo lectura · motor de agregación) ── */
+function rankBarsN(obj,sw,n){const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n||10);if(!e.length)return '<div class="admuted">Sin datos en el período.</div>';const max=Math.max(...e.map(x=>x[1]));return e.map(([k,v])=>adBar(k,v,max,'',sw&&sw[k])).join('');}
+function analizarPedidos(pedidos){
+  const mat={},med={},colB={},colT={},comb={},ops={};let bolsas=0,imp=0;
+  (pedidos||[]).forEach(p=>(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;imp+=q*(l.caras||1)*(l.colores||1);
+    const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;
+    mat[nm]=(mat[nm]||0)+q; med[l.medida]=(med[l.medida]||0)+q;
+    if(l.color_bolsa)colB[l.color_bolsa]=(colB[l.color_bolsa]||0)+q;
+    if(l.tinta)colT[l.tinta]=(colT[l.tinta]||0)+q;
+    if(l.colores===2&&l.tinta2)colT[l.tinta2]=(colT[l.tinta2]||0)+q;
+    const ck=`${nm} ${l.medida} · ${l.color_bolsa||'—'}`;comb[ck]=(comb[ck]||0)+q;
+    ops[p.operario]=(ops[p.operario]||0)+q;
+  }));
+  return {pedidos:(pedidos||[]).length,bolsas,impresiones:imp,mat,med,colB,colT,comb,ops};
+}
+function tendenciaSVG(pedidos){
+  const byDay={};(pedidos||[]).forEach(p=>{const d=new Date(p.created_at);const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;const q=(p.est_lineas||[]).reduce((a,l)=>a+(l.cantidad||0),0);byDay[k]=(byDay[k]||0)+q;});
+  const days=Object.keys(byDay).sort();if(!days.length)return '<div class="admuted">Sin datos en el período.</div>';
+  const vals=days.map(k=>byDay[k]);const max=Math.max(...vals,1);const W=320,H=120,n=days.length,step=(W-8)/n,bw=Math.max(2,Math.min(26,step-2));
+  let bars='';days.forEach((k,i)=>{const h=vals[i]/max*(H-26);const x=4+i*step;const y=H-16-h;bars+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,h).toFixed(1)}" rx="1.5" fill="#FFC107"/>`;});
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><line x1="4" y1="${H-16}" x2="${W-4}" y2="${H-16}" stroke="#E4E4E4"/>${bars}<text x="4" y="${H-3}" font-size="9" fill="#8C8C8C">${days[0].slice(5)}</text><text x="${W-4}" y="${H-3}" font-size="9" fill="#8C8C8C" text-anchor="end">${days[days.length-1].slice(5)}</text></svg>`;
+}
+async function reporteAnual(y){return analizarPedidos(await fetchPedidosRango(new Date(y,0,1).toISOString(),new Date(y+1,0,1).toISOString()));}
+let anaPeriodo='mes';
+$('#anaBtn').onclick=()=>{show('scAnalitica');renderAnalitica();};
+$('#anaBack').onclick=()=>show('scAdmin',false);
+$('#anaTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...$('#anaTabs').children].forEach(x=>x.classList.toggle('on',x===b));anaPeriodo=b.dataset.p;renderAnalitica();});
+function anaRango(){const now=new Date();if(anaPeriodo==='semana'){const off=(now.getDay()+6)%7;return[new Date(now.getFullYear(),now.getMonth(),now.getDate()-off).toISOString(),null,'Esta semana'];}if(anaPeriodo==='mes'){return[new Date(now.getFullYear(),now.getMonth(),1).toISOString(),null,H_MES[now.getMonth()]+' '+now.getFullYear()];}return['2000-01-01T00:00:00.000Z',null,'Todo el historial'];}
+async function renderAnalitica(){
+  const r=anaRango();$('#anaLbl').textContent=r[2];
+  ['anaMat','anaMed','anaComb','anaColB','anaColT','anaOps','anaTend'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
+  const peds=await fetchPedidosRango(r[0],r[1]);const a=analizarPedidos(peds);
+  $('#anaBol').textContent=a.bolsas.toLocaleString('es-AR');$('#anaImp').textContent=a.impresiones.toLocaleString('es-AR');$('#anaPed').textContent=a.pedidos;
+  $('#anaTend').innerHTML=tendenciaSVG(peds);
+  $('#anaMat').innerHTML=rankBarsN(a.mat,null,8);
+  $('#anaMed').innerHTML=rankBarsN(a.med,null,10);
+  $('#anaComb').innerHTML=rankBarsN(a.comb,null,10);
+  $('#anaColB').innerHTML=rankBarsN(a.colB,BOLSA_SW,10);
+  $('#anaColT').innerHTML=rankBarsN(a.colT,TINTA_SW,12);
+  $('#anaOps').innerHTML=rankBarsN(a.ops,null,10);
 }
 
 /* ── Supabase: guardar y cargar ── */
