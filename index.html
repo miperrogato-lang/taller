@@ -98,6 +98,22 @@
   .prez{display:inline-flex;flex-direction:column;align-items:center;gap:1px;background:#F0F0F0;color:var(--gray);border-radius:10px;padding:8px 13px;font-size:13.5px;font-weight:700;min-width:64px}
   .prez.in{background:#E7F7EE;color:#166534;border:1px solid #9BDBB5}
   .prez small{font-size:10.5px;font-weight:600;opacity:.85}
+  .histbtn{width:100%;min-height:52px;border:2px solid var(--amber);background:#FFFDF5;color:var(--ink);font-family:inherit;font-weight:800;font-size:15px;border-radius:12px;cursor:pointer;margin-bottom:16px}
+  .histbtn:active{background:#FFF8E1}
+  .calnav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .calnav button{width:44px;height:44px;border:1px solid var(--line);background:var(--surf);border-radius:11px;font-size:20px;cursor:pointer;font-family:inherit;color:var(--ink)}
+  .calmes{font-weight:800;font-size:16px}
+  .calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+  .caldow{text-align:center;font-size:11px;color:var(--gray);font-weight:800;padding:4px 0}
+  .calcell{aspect-ratio:1;border:1px solid var(--line);border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--surf)}
+  .calcell.empty{border:none;background:transparent}
+  .calcell .cald{font-size:14px;font-weight:600;color:var(--gray)}
+  .calcell.act{background:var(--amber);border-color:var(--amber);cursor:pointer}
+  .calcell.act .cald{color:#222222;font-weight:800}
+  .calcell.act .calc{font-size:10px;font-weight:800;color:#7a5c00}
+  .calcell.hoy{outline:2px solid var(--ink);outline-offset:-2px}
+  .calcell.act:active{background:var(--amber-d)}
+  .prezwrap{display:flex;flex-wrap:wrap;gap:8px}
   .buscarbtn{width:100%;border:2px solid var(--line2);background:var(--surf);color:var(--ink);font-family:inherit;font-size:16px;font-weight:800;padding:14px;border-radius:14px;cursor:pointer;margin-bottom:20px}
   .buscarbtn:active{background:var(--bg)}
   .contbtn{width:100%;min-height:56px;border-radius:13px;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer;border:2px solid var(--line2);background:var(--surf);color:var(--ink);margin-bottom:10px}
@@ -273,6 +289,7 @@
         <div><div class="adttl">Administrador</div><div class="adsub">Sesión · <span id="adWho">—</span> · <span class="adlive">● en vivo</span></div></div>
         <button class="adexit" id="adExit">Salir</button>
       </div>
+      <button class="histbtn" id="histBtn">Historial de jornadas ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
@@ -290,6 +307,38 @@
         <div class="feradd"><input type="date" id="ferFecha"><input type="text" id="ferNombre" placeholder="Nombre (opcional)"><button id="ferAdd">Agregar</button></div>
         <div id="adFeriados"></div>
       </div></div>
+    </div>
+
+    <!-- HISTORIAL DE JORNADAS -->
+    <div class="screen" id="scHistorial">
+      <div class="adhead">
+        <div><div class="adttl">Historial de jornadas</div><div class="adsub">producción guardada por día</div></div>
+        <button class="adexit" id="histBack">‹ Volver</button>
+      </div>
+      <div class="calnav">
+        <button id="histPrev">‹</button>
+        <div class="calmes" id="histMesTit">—</div>
+        <button id="histNext">›</button>
+      </div>
+      <div class="calgrid" id="calHead"></div>
+      <div class="calgrid" id="calDays"></div>
+      <p class="foot" style="margin-top:12px;color:var(--gray);font-size:12px">Los días en amarillo tienen producción. Tocá uno para ver el detalle.</p>
+    </div>
+
+    <div class="screen" id="scJornada">
+      <div class="adhead">
+        <div><div class="adttl" id="jorFecha">Jornada</div><div class="adsub">detalle del día</div></div>
+        <button class="adexit" id="jorBack">‹ Volver</button>
+      </div>
+      <div class="adkpis">
+        <div class="adkpi"><div class="v num" id="jorPed">0</div><div class="k">Pedidos</div></div>
+        <div class="adkpi"><div class="v num" id="jorBol">0</div><div class="k">Bolsas</div></div>
+        <div class="adkpi"><div class="v num" id="jorImp">0</div><div class="k">Impresiones</div></div>
+      </div>
+      <div class="adcard"><div class="adh">Operarios del día</div><div class="adbd"><div id="jorOps" class="prezwrap"></div></div></div>
+      <div class="adcard"><div class="adh">Por tipo de bolsa</div><div class="adbd" id="jorTipo"></div></div>
+      <div class="adcard"><div class="adh">Producción por operario</div><div class="adbd" id="jorPorOp"></div></div>
+      <div class="adcard"><div class="adh">Pedidos del día</div><div class="adbd" id="jorPedidos"></div></div>
     </div>
 
     <!-- ARMAR -->
@@ -649,6 +698,55 @@ async function buscarPedido(n){
       return `<div class="bcard"><div class="bch"><span><b>#${p.numero}</b>${p.compartido?' · compartido':''}</span><span>${fh} · ${p.operario}</span></div>${lin}</div>`;
     }).join('');
   }catch(err){console.error('buscar',err);R.innerHTML='<div class="admuted" style="padding:16px">Error al buscar.</div>';}
+}
+
+/* ── Historial de Jornadas (solo lectura · agrupa por fecha lo ya guardado) ── */
+async function fetchPedidosRango(startISO,endISO){
+  if(!db)return [];
+  try{let q=db.from('est_pedidos').select('*, est_lineas(*)').gte('created_at',startISO);if(endISO)q=q.lt('created_at',endISO);const {data,error}=await q.order('created_at',{ascending:true});if(error)throw error;return data||[];}
+  catch(e){console.error('fetchPedidosRango',e);return [];}
+}
+// Estructura de reportes (preparada para PDF a futuro)
+function agregarPedidos(pedidos){
+  let bolsas=0,imp=0;const ops={},tipos={};
+  (pedidos||[]).forEach(p=>(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;imp+=q*(l.caras||1)*(l.colores||1);ops[p.operario]=(ops[p.operario]||0)+q;const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;tipos[nm]=(tipos[nm]||0)+q;}));
+  return {pedidos:(pedidos||[]).length,bolsas,impresiones:imp,operarios:Object.keys(ops),porOperario:ops,porTipo:tipos};
+}
+function reporteDiario(pedidos){return agregarPedidos(pedidos);}
+async function reporteSemanal(fechaRef){const d=new Date(fechaRef);const off=(d.getDay()+6)%7;const lun=new Date(d.getFullYear(),d.getMonth(),d.getDate()-off);const dom=new Date(lun);dom.setDate(lun.getDate()+7);return agregarPedidos(await fetchPedidosRango(lun.toISOString(),dom.toISOString()));}
+async function reporteMensual(y,m){return agregarPedidos(await fetchPedidosRango(new Date(y,m,1).toISOString(),new Date(y,m+1,1).toISOString()));}
+
+const H_DOW=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+const H_MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+let histY,histM,histPorDia={};
+$('#histBtn').onclick=()=>{const d=new Date();histY=d.getFullYear();histM=d.getMonth();show('scHistorial');renderCalendario();};
+$('#histBack').onclick=()=>show('scAdmin',false);
+$('#jorBack').onclick=()=>show('scHistorial',false);
+$('#histPrev').onclick=()=>{histM--;if(histM<0){histM=11;histY--;}renderCalendario();};
+$('#histNext').onclick=()=>{histM++;if(histM>11){histM=0;histY++;}renderCalendario();};
+async function renderCalendario(){
+  $('#histMesTit').textContent=H_MES[histM]+' '+histY;
+  $('#calHead').innerHTML=H_DOW.map(d=>`<div class="caldow">${d}</div>`).join('');
+  $('#calDays').innerHTML='<div class="admuted" style="grid-column:1/-1;padding:14px">Cargando…</div>';
+  const peds=await fetchPedidosRango(new Date(histY,histM,1).toISOString(),new Date(histY,histM+1,1).toISOString());
+  histPorDia={};peds.forEach(p=>{const k=new Date(p.created_at).getDate();(histPorDia[k]=histPorDia[k]||[]).push(p);});
+  const off=(new Date(histY,histM,1).getDay()+6)%7;const dim=new Date(histY,histM+1,0).getDate();
+  const hoy=new Date();const esMesHoy=(hoy.getFullYear()===histY&&hoy.getMonth()===histM);
+  let cells='';for(let i=0;i<off;i++)cells+='<div class="calcell empty"></div>';
+  for(let d=1;d<=dim;d++){const arr=histPorDia[d];const tiene=arr&&arr.length;const cls='calcell'+(tiene?' act':'')+(esMesHoy&&hoy.getDate()===d?' hoy':'');cells+=`<div class="${cls}"${tiene?` data-d="${d}"`:''}><span class="cald">${d}</span>${tiene?`<span class="calc">${arr.length}p</span>`:''}</div>`;}
+  $('#calDays').innerHTML=cells;
+  $('#calDays').querySelectorAll('.calcell.act').forEach(c=>c.onclick=()=>openJornada(+c.dataset.d));
+}
+function openJornada(dia){
+  const pedidos=histPorDia[dia]||[];const fecha=new Date(histY,histM,dia);
+  $('#jorFecha').textContent=fecha.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  const r=reporteDiario(pedidos);
+  $('#jorPed').textContent=r.pedidos;$('#jorBol').textContent=r.bolsas.toLocaleString('es-AR');$('#jorImp').textContent=r.impresiones.toLocaleString('es-AR');
+  $('#jorOps').innerHTML=r.operarios.length?r.operarios.map(o=>`<div class="prez in">${o}</div>`).join(''):'<div class="admuted">—</div>';
+  $('#jorTipo').innerHTML=rankBars(r.porTipo);
+  $('#jorPorOp').innerHTML=rankBars(r.porOperario);
+  $('#jorPedidos').innerHTML=pedidos.length?pedidos.map(p=>{const dt=new Date(p.created_at);const fh=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');const lin=(p.est_lineas||[]).map(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;return `<div class="bline"><b>${(l.cantidad||0).toLocaleString('es-AR')}</b> ${nm} ${l.medida}<small>bolsa ${l.color_bolsa||'—'} · ${cols||'—'} · ${l.tipo_tinta||'—'}</small></div>`;}).join('');return `<div class="bcard"><div class="bch"><span><b>#${p.numero}</b>${p.compartido?' · compartido':''}</span><span>${fh} · ${p.operario}</span></div>${lin}</div>`;}).join(''):'<div class="admuted">Sin pedidos.</div>';
+  show('scJornada');
 }
 
 /* ── Supabase: guardar y cargar ── */
