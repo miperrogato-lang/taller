@@ -392,8 +392,7 @@
 let db=null;
 try{db=window.supabase.createClient('https://tmouwzrtjbvqyiloyods.supabase.co','sb_publishable_BqHXaXmGl0Px27THUtLcJQ_anBXItji');}catch(e){console.error('Supabase init',e);}
 /* ── datos ── */
-const IMPRESORES=['Pablo','Yoni','Franco','José'];
-const EQUIPO=['Pablo','Yoni','Franco','José','Tomás','Lisandro Gil','Gian','Lisandro Aquino','Vanesa','Alfonso','Joana'];
+let IMPRESORES=[],EQUIPO=[],EMPLEADOS=[];  // se cargan desde la tabla empleados (Maestro)
 const PRODUCTOS=[
   {id:'fris',name:'Friselina',solvAuto:false,med:['Palanca autos','15×20 riñón','20×30 riñón','20×40 riñón','30×40 riñón','30×30 asas','30×40 asas','40×40 asas','45×40 asas','60×40 asas']},
   {id:'poli',name:'Polietileno',solvAuto:true,med:['15×20','20×30','25×35','30×40','35×45','40×50']},
@@ -574,7 +573,19 @@ function buildPedidos(){
 }
 
 /* ── admin (acceso oculto: 3 toques en el logo → PIN) ── */
-const ADMINS={'2468':'Alfonso','1357':'Ana'};
+let ADMINS={};
+async function loadEmpleados(){
+  if(!db)return;
+  try{
+    const {data,error}=await db.from('empleados').select('*').eq('estado','activo');
+    if(error)throw error;
+    EMPLEADOS=(data||[]).sort((a,b)=>((a.orden??100)-(b.orden??100))||String(a.nombre).localeCompare(String(b.nombre)));
+    const dn=e=>e.nombre+(e.apellido?' '+e.apellido:'');
+    IMPRESORES=EMPLEADOS.filter(e=>e.imprime).map(dn);
+    EQUIPO=EMPLEADOS.map(dn);
+    ADMINS={};EMPLEADOS.forEach(e=>{if(e.pin)ADMINS[String(e.pin)]=dn(e);});
+  }catch(err){console.error('loadEmpleados',err);}
+}
 const TINTA_SW={};TINTAS.concat(TINTAS_ESP).forEach(([n,c])=>TINTA_SW[n]=c);
 const BOLSA_SW={};Object.values(BOLSA).flat().forEach(([n,c])=>BOLSA_SW[n]=c);
 let adminWho='',logoTaps=0,logoTimer=null,pinVal='';
@@ -693,7 +704,7 @@ async function delFeriado(id){if(db&&!String(id).startsWith('tmp')){try{await db
 $('#ferAdd').onclick=addFeriado;
 
 /* init */
-refreshHome();scStack.push('scHome');loadData();
+refreshHome();scStack.push('scHome');loadEmpleados().then(loadData);
 </script>
 </body>
 </html>
