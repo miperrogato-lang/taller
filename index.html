@@ -339,6 +339,7 @@
         <div class="adkpi"><div class="v num" id="jorBol">0</div><div class="k">Bolsas</div></div>
         <div class="adkpi"><div class="v num" id="jorImp">0</div><div class="k">Impresiones</div></div>
       </div>
+      <button class="histbtn" id="repBtn">📄 Generar reporte</button>
       <div class="adcard"><div class="adh">Operarios del día</div><div class="adbd"><div id="jorOps" class="prezwrap"></div></div></div>
       <div class="adcard"><div class="adh">Por tipo de bolsa</div><div class="adbd" id="jorTipo"></div></div>
       <div class="adcard"><div class="adh">Producción por operario</div><div class="adbd" id="jorPorOp"></div></div>
@@ -462,9 +463,18 @@
   <button class="contbtn" id="contCancel">Cancelar</button>
 </div></div>
 
+<div class="ov" id="ovReporte"><div class="pad">
+  <div class="kh"><span class="lbl">Generar reporte</span><button class="close" id="repClose">✕</button></div>
+  <button class="contbtn primary" id="repPdf">📄 Exportar PDF</button>
+  <button class="contbtn" id="repExcel">📊 Exportar Excel</button>
+</div></div>
+
 <div class="toast" id="toast">✓ Pedido confirmado</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ── Supabase ── */
 let db=null;
@@ -767,7 +777,7 @@ async function renderCalendario(){
   $('#calDays').querySelectorAll('.calcell.act').forEach(c=>c.onclick=()=>openJornada(+c.dataset.d));
 }
 function openJornada(dia){
-  const pedidos=histPorDia[dia]||[];const fecha=new Date(histY,histM,dia);
+  const pedidos=histPorDia[dia]||[];const fecha=new Date(histY,histM,dia);jorActual={fecha,pedidos};
   $('#jorFecha').textContent=fecha.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   const r=reporteDiario(pedidos);
   $('#jorPed').textContent=r.pedidos;$('#jorBol').textContent=r.bolsas.toLocaleString('es-AR');$('#jorImp').textContent=r.impresiones.toLocaleString('es-AR');
@@ -819,6 +829,85 @@ async function renderAnalitica(){
   $('#anaColT').innerHTML=rankBarsN(a.colT,TINTA_SW,12);
   $('#anaOps').innerHTML=rankBarsN(a.ops,null,10);
 }
+
+/* ── ReportService (desacoplado de la UI · reutiliza analizarPedidos) ── */
+let jorActual={fecha:null,pedidos:[]};
+const ReportService={
+  pct(v,t){return t?Math.round(v/t*1000)/10:0;},
+  fmtH(min){return Math.floor(min/60)+'h '+String(Math.round(min%60)).padStart(2,'0')+'m';},
+  async modelo(fechaObj,pedidos){
+    const a=analizarPedidos(pedidos);
+    const opsBol={},opsImp={};
+    (pedidos||[]).forEach(p=>(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;opsBol[p.operario]=(opsBol[p.operario]||0)+q;opsImp[p.operario]=(opsImp[p.operario]||0)+q*(l.caras||1)*(l.colores||1);}));
+    const iso=fechaObj.getFullYear()+'-'+String(fechaObj.getMonth()+1).padStart(2,'0')+'-'+String(fechaObj.getDate()).padStart(2,'0');
+    let personal=[],hN=0,hE=0,presentes=[];
+    if(db){try{
+      const {data:fs}=await db.from('est_fichajes').select('*').eq('fecha',iso).order('created_at',{ascending:true});
+      const byOp={};(fs||[]).forEach(e=>{(byOp[e.operario]=byOp[e.operario]||[]).push({tipo:e.tipo,hhmm:e.hora});});
+      const dow=fechaObj.getDay();const allExtra=(dow===0||dow===6||isFeriado(fechaObj));
+      Object.entries(byOp).forEach(([op,ev])=>{const w=workedMin(ev);let norm,ext;if(allExtra){norm=0;ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}hN+=norm;hE+=ext;presentes.push(op);personal.push({operario:op,normal:norm,extra:ext});});
+    }catch(e){console.error('modelo horas',e);}}
+    const rank=obj=>Object.entries(obj).sort((x,y)=>y[1]-x[1]).map(([n,v])=>({nombre:n,cantidad:v,pct:ReportService.pct(v,a.bolsas)}));
+    return {
+      fecha:fechaObj, iso, id:'J-'+iso.replace(/-/g,''), generado:new Date(),
+      resumen:{pedidos:a.pedidos,bolsas:a.bolsas,impresiones:a.impresiones,presentes:presentes.length,impresores:Object.keys(opsBol).length,hNormal:hN,hExtra:hE},
+      personal,
+      porOperario:Object.keys(opsBol).sort((x,y)=>opsBol[y]-opsBol[x]).map(op=>({operario:op,bolsas:opsBol[op],impresiones:opsImp[op],pct:ReportService.pct(opsBol[op],a.bolsas)})),
+      porMaterial:rank(a.mat),porMedida:rank(a.med),porColorBolsa:rank(a.colB),porColorTinta:rank(a.colT),
+      combinaciones:Object.entries(a.comb).sort((x,y)=>y[1]-x[1]).slice(0,20).map(([k,v])=>({combo:k,cantidad:v})),
+      pedidos:(pedidos||[]).map(p=>({p,lineas:p.est_lineas||[]}))
+    };
+  },
+  pdf(m){
+    const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});const W=doc.internal.pageSize.getWidth(),Hp=doc.internal.pageSize.getHeight();
+    const fechaTxt=m.fecha.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    doc.setFillColor(34,34,34);doc.rect(0,0,W,64,'F');
+    doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('Reporte de Producción',40,30);
+    doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(255,193,7);doc.text('Sistema de Producción',40,48);
+    doc.setTextColor(255,255,255);doc.setFontSize(9);doc.text('Jornada '+m.id,W-40,24,{align:'right'});doc.text(fechaTxt,W-40,38,{align:'right'});doc.text('Generado: '+m.generado.toLocaleString('es-AR'),W-40,52,{align:'right'});
+    let y=88;doc.setTextColor(34,34,34);
+    doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('Resumen general',40,y);
+    doc.autoTable({startY:y+6,theme:'grid',styles:{fontSize:9,cellPadding:5},headStyles:{fillColor:[245,245,245],textColor:[34,34,34]},
+      head:[['Pedidos','Bolsas','Impresiones','Presentes','Impresores','H. normales','H. extras']],
+      body:[[m.resumen.pedidos,m.resumen.bolsas.toLocaleString('es-AR'),m.resumen.impresiones.toLocaleString('es-AR'),m.resumen.presentes,m.resumen.impresores,ReportService.fmtH(m.resumen.hNormal),ReportService.fmtH(m.resumen.hExtra)]]});
+    y=doc.lastAutoTable.finalY+18;
+    const tabla=(titulo,head,body)=>{if(!body.length)return;if(y>Hp-60){doc.addPage();y=48;}doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(34,34,34);doc.text(titulo,40,y);doc.autoTable({startY:y+6,theme:'striped',styles:{fontSize:9,cellPadding:4},headStyles:{fillColor:[255,193,7],textColor:[34,34,34]},head:[head],body});y=doc.lastAutoTable.finalY+18;};
+    tabla('Producción por operario',['Operario','Bolsas','Impresiones','%'],m.porOperario.map(o=>[o.operario,o.bolsas.toLocaleString('es-AR'),o.impresiones.toLocaleString('es-AR'),o.pct+'%']));
+    tabla('Producción por material',['Material','Cantidad','%'],m.porMaterial.map(r=>[r.nombre,r.cantidad.toLocaleString('es-AR'),r.pct+'%']));
+    tabla('Producción por medida',['Medida','Cantidad','%'],m.porMedida.map(r=>[r.nombre,r.cantidad.toLocaleString('es-AR'),r.pct+'%']));
+    tabla('Color de bolsa',['Color','Cantidad','%'],m.porColorBolsa.map(r=>[r.nombre,r.cantidad.toLocaleString('es-AR'),r.pct+'%']));
+    tabla('Color de tinta',['Color','Cantidad','%'],m.porColorTinta.map(r=>[r.nombre,r.cantidad.toLocaleString('es-AR'),r.pct+'%']));
+    tabla('Combinaciones más fabricadas',['Combinación','Cantidad'],m.combinaciones.map(c=>[c.combo,c.cantidad.toLocaleString('es-AR')]));
+    const pedBody=[];m.pedidos.forEach(({p,lineas})=>{const dt=new Date(p.created_at);const fh=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');lineas.forEach(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;pedBody.push(['#'+p.numero,p.operario+' '+fh,P?P.name:l.producto,l.medida,l.color_bolsa||'—',cols||'—',l.tipo_tinta||'—',(l.cantidad||0).toLocaleString('es-AR')]);});});
+    tabla('Pedidos del día',['N°','Operario','Material','Medida','Bolsa','Tinta','Tipo','Cant.'],pedBody);
+    const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(140,140,140);doc.text('Generado automáticamente por el Sistema de Producción · '+m.generado.toLocaleString('es-AR'),40,Hp-20);doc.text('Pág. '+i+'/'+pages,W-40,Hp-20,{align:'right'});}
+    doc.save('Reporte_'+m.id+'.pdf');
+  },
+  excel(m){
+    const XLSX=window.XLSX;const wb=XLSX.utils.book_new();
+    const add=(nombre,rows)=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),nombre);
+    add('Resumen',[['Reporte de Producción'],['Jornada',m.id],['Fecha',m.fecha.toLocaleDateString('es-AR')],['Generado',m.generado.toLocaleString('es-AR')],[],['Pedidos',m.resumen.pedidos],['Bolsas',m.resumen.bolsas],['Impresiones',m.resumen.impresiones],['Presentes',m.resumen.presentes],['Impresores',m.resumen.impresores],['Horas normales',ReportService.fmtH(m.resumen.hNormal)],['Horas extras',ReportService.fmtH(m.resumen.hExtra)]]);
+    const pedRows=[['N°','Operario','Hora','Material','Medida','Color bolsa','Color tinta','Tipo tinta','Caras','Colores','Cantidad']];m.pedidos.forEach(({p,lineas})=>{const dt=new Date(p.created_at);const fh=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');lineas.forEach(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);pedRows.push(['#'+p.numero,p.operario,fh,P?P.name:l.producto,l.medida,l.color_bolsa||'',l.colores===2?(l.tinta+'+'+l.tinta2):(l.tinta||''),l.tipo_tinta||'',l.caras,l.colores,l.cantidad||0]);});});
+    add('Pedidos',pedRows);
+    add('Operarios',[['Operario','Bolsas','Impresiones','%'],...m.porOperario.map(o=>[o.operario,o.bolsas,o.impresiones,o.pct])]);
+    add('Materiales',[['Material','Cantidad','%'],...m.porMaterial.map(r=>[r.nombre,r.cantidad,r.pct])]);
+    add('Medidas',[['Medida','Cantidad','%'],...m.porMedida.map(r=>[r.nombre,r.cantidad,r.pct])]);
+    add('Colores',[['Tipo','Color','Cantidad','%'],...m.porColorBolsa.map(r=>['Bolsa',r.nombre,r.cantidad,r.pct]),...m.porColorTinta.map(r=>['Tinta',r.nombre,r.cantidad,r.pct])]);
+    add('Combinaciones',[['Combinación','Cantidad'],...m.combinaciones.map(c=>[c.combo,c.cantidad])]);
+    XLSX.writeFile(wb,'Reporte_'+m.id+'.xlsx');
+  }
+};
+async function generarReporte(tipo){
+  $('#ovReporte').classList.remove('on');
+  if(!jorActual.fecha)return;
+  toastMsg('Generando '+(tipo==='pdf'?'PDF':'Excel')+'…');
+  try{const m=await ReportService.modelo(jorActual.fecha,jorActual.pedidos);if(tipo==='pdf')ReportService.pdf(m);else ReportService.excel(m);}
+  catch(e){console.error('reporte',e);toastMsg('⚠ No se pudo generar (probá en la versión publicada)');}
+}
+$('#repBtn').onclick=()=>$('#ovReporte').classList.add('on');
+$('#repClose').onclick=()=>$('#ovReporte').classList.remove('on');
+$('#repPdf').onclick=()=>generarReporte('pdf');
+$('#repExcel').onclick=()=>generarReporte('excel');
 
 /* ── Supabase: guardar y cargar ── */
 function toastMsg(txt){const t=$('#toast');t.textContent=txt;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200);}
