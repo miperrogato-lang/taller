@@ -118,6 +118,10 @@
   .ordbar span{display:block;height:100%;background:var(--amber);border-radius:6px}
   .ordpct{font-size:13px;font-weight:800;margin-bottom:6px}
   .ordcol{font-size:13px;font-weight:600;padding:2px 0}
+  .impbox{background:#FFF8E1;border:1px solid #FCE9A8;border-radius:12px;padding:12px 14px;margin-bottom:14px}
+  .impbox .implbl{font-size:12px;font-weight:800;color:#7a5c00;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
+  .impfield{width:100%;background:#fff;border:2px solid var(--amber);border-radius:10px;padding:12px;font-size:22px;font-weight:800;color:var(--ink);cursor:pointer;font-family:inherit}
+  .impinfo{font-size:12px;color:var(--gray);font-weight:600;margin-top:6px}
   .prezwrap{display:flex;flex-wrap:wrap;gap:8px}
   .tabs{display:flex;gap:6px;background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:5px;margin-bottom:16px}
   .tabs button{flex:1;background:none;border:none;font-family:inherit;font-size:14px;font-weight:800;color:var(--gray);padding:10px 4px;border-radius:8px;cursor:pointer}
@@ -482,6 +486,11 @@
         <div class="ch"><span>Detalle</span><span class="num" id="cTot">0 bolsas</span></div>
         <div id="confList"></div>
       </div>
+      <div class="impbox">
+        <div class="implbl">Impresiones realizadas hoy</div>
+        <button class="impfield num" id="impField">0</button>
+        <div class="impinfo" id="impInfo"></div>
+      </div>
       <div class="actions">
         <button class="btn add" id="btnBack">‹ Seguir cargando</button>
         <button class="btn done" id="btnConfirm">✓ Confirmar</button>
@@ -583,7 +592,7 @@ $('#backBtn').onclick=()=>{if(scStack.length>1){scStack.pop();show(scStack[scSta
 /* ── home ── */
 function refreshHome(){
   let bol=0,imp=0;
-  sesion.pedidos.forEach(p=>p.lineas.forEach(l=>{bol+=l.qty;imp+=l.qty*l.caras*l.colores;}));
+  sesion.pedidos.forEach(p=>{imp+=impresionesDe(p);p.lineas.forEach(l=>{bol+=l.qty;});});
   $('#hPed').textContent=sesion.pedidos.length;
   $('#hBol').textContent=bol.toLocaleString('es-AR');
   $('#hImp').textContent=imp.toLocaleString('es-AR');
@@ -618,14 +627,14 @@ function setPedidoField(){
 $('#shareTog').onclick=()=>{cur.compartido=!cur.compartido;setPedidoField();};
 $('#pedidoBtn').onclick=()=>openPad('N° de pedido',cur.numero||'',n=>{if(n>0)checkNumero(n);});
 async function checkNumero(n){
-  cur.numero=n;cur.previas=[];cur.ordenColores=1;cur.ordenBolsas=0;
+  cur.numero=n;cur.previas=[];cur.impresionesHoy=null;cur.realizadasPrevias=0;contOrd=null;
   let ord=null,existing=[];
   if(db){try{
     const {data:o}=await db.from('est_ordenes').select('*').eq('numero',String(n)).maybeSingle();ord=o||null;
     const {data}=await db.from('est_pedidos').select('*, est_lineas(*)').eq('numero',String(n)).order('created_at',{ascending:true});existing=data||[];
   }catch(e){console.error('checkNumero',e);}}
-  if(ord||existing.length){openCont(n,existing,ord);}
-  else{openPad('¿Colores de la orden?',1,c=>{cur.ordenColores=Math.max(1,c||1);if(cur.ordenColores>1){openPad('Bolsas totales de la orden','',b=>{cur.ordenBolsas=b||0;nuevaOrdenBuilder();});}else{nuevaOrdenBuilder();}});}
+  if(ord||existing.length){cur.realizadasPrevias=existing.reduce((a,c)=>a+impCargaRaw(c),0);openCont(n,existing,ord);}
+  else{nuevaOrdenBuilder();}
 }
 function nuevaOrdenBuilder(){$('#lineBuilder').style.display='block';setPedidoField();renderPrevias();renderOptions();}
 let contN=null,contExisting=[];
@@ -633,7 +642,7 @@ let contOrd=null;
 function openCont(n,ex,ord){contN=n;contExisting=ex;contOrd=ord||null;
   const u=ex.reduce((a,c)=>a+(c.est_lineas||[]).reduce((b,l)=>b+(l.cantidad||0),0),0);
   let prog='';
-  if(ord){let hechas=0;ex.forEach(c=>(c.est_lineas||[]).forEach(l=>{hechas+=(l.cantidad||0)*(l.colores||1);}));const target=(ord.total_bolsas||0)*(ord.total_colores||1);const pct=target?Math.min(100,Math.round(hechas/target*100)):0;const colDone=ord.total_bolsas?Math.floor(hechas/ord.total_bolsas):0;let cols='';for(let i=1;i<=ord.total_colores;i++)cols+=`<div class="ordcol">${i<=colDone?'✔':'⏳'} Color ${i} — ${i<=colDone?'completado':'pendiente'}</div>`;prog=`<div class="ordprog"><div class="ordbar"><span style="width:${pct}%"></span></div><div class="ordpct">${ord.estado==='finalizada'?'✅ Orden finalizada':pct+'% completada'}</div>${cols}</div>`;}
+  if(ord){let hechas=0;ex.forEach(c=>{hechas+=impCargaRaw(c);});const target=(ord.total_bolsas||0)*(ord.total_colores||1);const pct=target?Math.min(100,Math.round(hechas/target*100)):0;const colDone=ord.total_bolsas?Math.floor(hechas/ord.total_bolsas):0;let cols='';for(let i=1;i<=ord.total_colores;i++)cols+=`<div class="ordcol">${i<=colDone?'✔':'⏳'} Color ${i} — ${i<=colDone?'completado':'pendiente'}</div>`;prog=`<div class="ordprog"><div class="ordbar"><span style="width:${pct}%"></span></div><div class="ordpct">${ord.estado==='finalizada'?'✅ Orden finalizada':pct+'% completada'}</div>${cols}</div>`;}
   $('#contMsg').innerHTML=`Orden <b>#${n}</b> — ${u.toLocaleString('es-AR')} bolsas registradas. ¿Qué querés hacer?`+prog;
   $('#ovCont').classList.add('on');}
 $('#contClose').onclick=()=>$('#ovCont').classList.remove('on');
@@ -722,7 +731,16 @@ function renderConfirm(){
   const list=$('#confList');list.innerHTML='';
   cur.lineas.forEach(l=>{const t=lineTxt(l);const row=document.createElement('div');row.className='li';row.innerHTML=`<div class="q num">${l.qty.toLocaleString('es-AR')}</div><div class="d">${t.main}<small>${t.sub}</small></div>`;list.appendChild(row);});
   $('#cTot').textContent=cur.lineas.reduce((a,l)=>a+l.qty,0).toLocaleString('es-AR')+' bolsas';
+  const cargaBolsas=cur.lineas.reduce((a,l)=>a+l.qty,0);
+  let esperadas;
+  if(contOrd){esperadas=(contOrd.total_bolsas||0)*(contOrd.total_colores||1);}
+  else{esperadas=cur.lineas.reduce((a,l)=>a+l.qty*(l.colores||1),0);}
+  const realiz=cur.realizadasPrevias||0;const pend=Math.max(0,esperadas-realiz);
+  if(cur.impresionesHoy==null)cur.impresionesHoy=Math.min(cargaBolsas,pend>0?pend:cargaBolsas);
+  $('#impField').textContent=cur.impresionesHoy.toLocaleString('es-AR');
+  $('#impInfo').textContent=`Esperadas ${esperadas.toLocaleString('es-AR')} · ya hechas ${realiz.toLocaleString('es-AR')} · pendientes ${pend.toLocaleString('es-AR')}`;
 }
+$('#impField').onclick=()=>openPad('Impresiones realizadas hoy',cur.impresionesHoy||0,v=>{cur.impresionesHoy=Math.max(0,v||0);renderConfirm();});
 $('#btnBack').onclick=()=>show('scBuild',false);
 $('#btnConfirm').onclick=()=>{const ped=cur;sesion.pedidos.push(ped);refreshHome();toastMsg('✓ Pedido confirmado');cur=null;draft=null;scStack.length=0;scStack.push('scHome');show('scHome',false);savePedido(ped);};
 
@@ -782,7 +800,7 @@ function adBar(name,val,max,sub,swatch){const pct=Math.max(4,val/max*100);const 
 function rankBars(obj,sw){const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]);if(!e.length)return '<div class="admuted">Sin datos todavía.</div>';const max=Math.max(...e.map(x=>x[1]));return e.map(([n,v])=>adBar(n,v,max,'',sw&&sw[n])).join('');}
 function renderAdmin(){
   const ops={};let bol=0,imp=0,agua=0,solv=0;const bc={},tc={},tb={};
-  sesion.pedidos.forEach(p=>p.lineas.forEach(l=>{const impr=l.qty*l.caras*l.colores;bol+=l.qty;imp+=impr;ops[p.operario]=ops[p.operario]||{bol:0,imp:0};ops[p.operario].bol+=l.qty;ops[p.operario].imp+=impr;if(l.tipo==='Al agua')agua+=l.qty;else solv+=l.qty;if(l.bolsa)bc[l.bolsa]=(bc[l.bolsa]||0)+l.qty;if(l.tinta)tc[l.tinta]=(tc[l.tinta]||0)+l.qty;if(l.colores===2&&l.tinta2)tc[l.tinta2]=(tc[l.tinta2]||0)+l.qty;const pn=(PRODUCTOS.find(x=>x.id===l.prod)||{}).name||l.prod;tb[pn]=(tb[pn]||0)+l.qty;}));
+  sesion.pedidos.forEach(p=>{const pi=impresionesDe(p);imp+=pi;ops[p.operario]=ops[p.operario]||{bol:0,imp:0};ops[p.operario].imp+=pi;p.lineas.forEach(l=>{bol+=l.qty;ops[p.operario].bol+=l.qty;if(l.tipo==='Al agua')agua+=l.qty;else solv+=l.qty;if(l.bolsa)bc[l.bolsa]=(bc[l.bolsa]||0)+l.qty;if(l.tinta)tc[l.tinta]=(tc[l.tinta]||0)+l.qty;if(l.colores===2&&l.tinta2)tc[l.tinta2]=(tc[l.tinta2]||0)+l.qty;const pn=(PRODUCTOS.find(x=>x.id===l.prod)||{}).name||l.prod;tb[pn]=(tb[pn]||0)+l.qty;});});
   $('#adBol').textContent=bol.toLocaleString('es-AR');$('#adImp').textContent=imp.toLocaleString('es-AR');$('#adPed').textContent=sesion.pedidos.length;
   const oe=Object.entries(ops).map(([n,v])=>({n,...v})).sort((a,b)=>b.imp-a.imp);
   const maxI=Math.max(1,...oe.map(o=>o.imp));
@@ -831,7 +849,7 @@ async function fetchPedidosRango(startISO,endISO){
 // Estructura de reportes (preparada para PDF a futuro)
 function agregarPedidos(pedidos){
   let bolsas=0,imp=0;const ops={},tipos={};
-  (pedidos||[]).forEach(p=>(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;imp+=q*(l.caras||1)*(l.colores||1);ops[p.operario]=(ops[p.operario]||0)+q;const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;tipos[nm]=(tipos[nm]||0)+q;}));
+  (pedidos||[]).forEach(p=>{imp+=impresionesDe(p);(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;ops[p.operario]=(ops[p.operario]||0)+q;const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;tipos[nm]=(tipos[nm]||0)+q;});});
   return {pedidos:(pedidos||[]).length,bolsas,impresiones:imp,operarios:Object.keys(ops),porOperario:ops,porTipo:tipos};
 }
 function reporteDiario(pedidos){return agregarPedidos(pedidos);}
@@ -875,7 +893,7 @@ function openJornada(dia){
 function rankBarsN(obj,sw,n){const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n||10);if(!e.length)return '<div class="admuted">Sin datos en el período.</div>';const max=Math.max(...e.map(x=>x[1]));return e.map(([k,v])=>adBar(k,v,max,'',sw&&sw[k])).join('');}
 function analizarPedidos(pedidos){
   const mat={},med={},colB={},colT={},comb={},ops={};let bolsas=0,imp=0;
-  (pedidos||[]).forEach(p=>(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;imp+=q*(l.caras||1)*(l.colores||1);
+  (pedidos||[]).forEach(p=>{imp+=impresionesDe(p);(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;
     const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;
     mat[nm]=(mat[nm]||0)+q; med[l.medida]=(med[l.medida]||0)+q;
     if(l.color_bolsa)colB[l.color_bolsa]=(colB[l.color_bolsa]||0)+q;
@@ -883,7 +901,7 @@ function analizarPedidos(pedidos){
     if(l.colores===2&&l.tinta2)colT[l.tinta2]=(colT[l.tinta2]||0)+q;
     const ck=`${nm} ${l.medida} · ${l.color_bolsa||'—'}`;comb[ck]=(comb[ck]||0)+q;
     ops[p.operario]=(ops[p.operario]||0)+q;
-  }));
+  });});
   return {pedidos:(pedidos||[]).length,bolsas,impresiones:imp,mat,med,colB,colT,comb,ops};
 }
 function tendenciaSVG(pedidos){
@@ -1112,8 +1130,8 @@ async function renderOrdenes(){
     const {data:ords}=await db.from('est_ordenes').select('*').eq('estado','en_proceso').order('created_at',{ascending:false});
     if(!ords||!ords.length){c.innerHTML='<div class="admuted" style="padding:16px">No hay órdenes en proceso. 🎉</div>';return;}
     const nums=ords.map(o=>o.numero);
-    const {data:cargas}=await db.from('est_pedidos').select('numero, est_lineas(cantidad,colores)').in('numero',nums);
-    const hb={};(cargas||[]).forEach(cg=>{let h=0;(cg.est_lineas||[]).forEach(l=>h+=(l.cantidad||0)*(l.colores||1));hb[cg.numero]=(hb[cg.numero]||0)+h;});
+    const {data:cargas}=await db.from('est_pedidos').select('numero, impresiones, est_lineas(cantidad,caras,colores)').in('numero',nums);
+    const hb={};(cargas||[]).forEach(cg=>{hb[cg.numero]=(hb[cg.numero]||0)+impCargaRaw(cg);});
     c.innerHTML=ords.map(o=>{const hechas=hb[o.numero]||0;const target=(o.total_bolsas||0)*(o.total_colores||1);const pct=target?Math.min(100,Math.round(hechas/target*100)):0;const colDone=o.total_bolsas?Math.floor(hechas/o.total_bolsas):0;return `<div class="adcard"><div class="adh">Orden #${o.numero}<small>${(o.total_bolsas||0).toLocaleString('es-AR')} bolsas · ${o.total_colores} colores</small></div><div class="adbd"><div class="ordbar"><span style="width:${pct}%"></span></div><div class="ordpct">${pct}% · ${colDone}/${o.total_colores} colores completos</div></div></div>`;}).join('');
   }catch(e){console.error('renderOrdenes',e);c.innerHTML='<div class="admuted" style="padding:16px">No se pudo cargar.</div>';}
 }
@@ -1123,7 +1141,7 @@ function toastMsg(txt){const t=$('#toast');t.textContent=txt;t.classList.add('on
 async function savePedido(ped){
   if(!db)return;
   try{
-    const {data,error}=await db.from('est_pedidos').insert({numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso'}).select().single();
+    const {data,error}=await db.from('est_pedidos').insert({numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso',impresiones:ped.impresionesHoy||0}).select().single();
     if(error)throw error;
     ped.id=data.id;
     const rows=ped.lineas.map(l=>({pedido_id:data.id,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty}));
@@ -1132,17 +1150,19 @@ async function savePedido(ped){
     await upsertOrden(ped);
   }catch(err){console.error('savePedido',err);toastMsg('⚠ No se pudo guardar en la nube');}
 }
+function impCargaRaw(c){const li=(c.est_lineas||[]).reduce((a,l)=>a+((l.cantidad)||0)*((l.caras)||1)*((l.colores)||1),0);return (c.impresiones&&c.impresiones>0)?c.impresiones:li;}
+function impresionesDe(p){if(p.impresiones&&p.impresiones>0)return p.impresiones;const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(((l.cantidad??l.qty)||0)*((l.caras)||1)*((l.colores)||1)),0);}
 async function upsertOrden(ped){
   try{
     const numero=String(ped.numero);
     const {data:ord}=await db.from('est_ordenes').select('*').eq('numero',numero).maybeSingle();
     let total_bolsas,total_colores;
     if(ord){total_bolsas=ord.total_bolsas;total_colores=ord.total_colores;}
-    else{total_colores=ped.ordenColores||1;const avB=Math.max(0,...(ped.lineas||[]).map(l=>l.qty||0));total_bolsas=ped.ordenBolsas||avB;}
-    const {data:cargas}=await db.from('est_pedidos').select('est_lineas(cantidad,colores)').eq('numero',numero);
-    let hechas=0;(cargas||[]).forEach(c=>(c.est_lineas||[]).forEach(l=>{hechas+=(l.cantidad||0)*(l.colores||1);}));
-    const target=(total_bolsas||0)*(total_colores||1);
-    const estado=(target>0&&hechas>=target)?'finalizada':'en_proceso';
+    else{total_bolsas=(ped.lineas||[]).reduce((a,l)=>a+(l.qty||0),0);total_colores=Math.max(1,...(ped.lineas||[]).map(l=>l.colores||1));}
+    const {data:cargas}=await db.from('est_pedidos').select('impresiones, est_lineas(cantidad,caras,colores)').eq('numero',numero);
+    let realizadas=0;(cargas||[]).forEach(c=>{realizadas+=impCargaRaw(c);});
+    const esperadas=(total_bolsas||0)*(total_colores||1);
+    const estado=(esperadas>0&&realizadas>=esperadas)?'finalizada':'en_proceso';
     if(ord)await db.from('est_ordenes').update({total_bolsas,total_colores,estado}).eq('numero',numero);
     else await db.from('est_ordenes').insert({numero,total_bolsas,total_colores,estado});
   }catch(e){console.error('upsertOrden',e);}
@@ -1153,7 +1173,7 @@ async function loadData(){
   try{
     const t=new Date();const start=new Date(t.getFullYear(),t.getMonth(),t.getDate()).toISOString();
     const {data:peds}=await db.from('est_pedidos').select('*, est_lineas(*)').gte('created_at',start).order('created_at',{ascending:true});
-    if(peds)sesion.pedidos=peds.map(p=>({id:p.id,numero:p.numero,operario:p.operario,compartido:p.compartido,estado:p.estado,lineas:(p.est_lineas||[]).map(l=>({prod:l.producto,med:l.medida,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras,colores:l.colores,qty:l.cantidad}))}));
+    if(peds)sesion.pedidos=peds.map(p=>({id:p.id,numero:p.numero,operario:p.operario,compartido:p.compartido,estado:p.estado,impresiones:p.impresiones,lineas:(p.est_lineas||[]).map(l=>({prod:l.producto,med:l.medida,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras,colores:l.colores,qty:l.cantidad}))}));
     const todayISO=start.slice(0,10);
     const {data:fs}=await db.from('est_fichajes').select('*').eq('fecha',todayISO).order('created_at',{ascending:true});
     if(fs){fichajes={};fs.forEach(e=>{const f=fichajes[e.operario]||{estado:'afuera',desde:null,eventos:[]};if(e.tipo==='entrada'){f.estado='adentro';f.desde=e.hora;}else{f.estado='afuera';f.desde=null;}f.eventos.push({tipo:e.tipo,hhmm:e.hora});fichajes[e.operario]=f;});}
