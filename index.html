@@ -128,6 +128,12 @@
   .hday{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
   .hday:first-child{border-top:none}
   .hday b{color:var(--amber-d)}
+  .hdayr{display:flex;align-items:center;gap:8px}
+  .corbtn{border:none;background:#F0F0F0;border-radius:7px;padding:3px 8px;font-size:13px;cursor:pointer}
+  .corbtn:active{background:#e2e2e2}
+  .corinfo{font-size:15px;font-weight:700;margin-bottom:6px;padding:10px 12px;background:var(--bg);border-radius:10px}
+  .corhist{font-size:12.5px;padding:7px 0;border-top:1px solid var(--line);font-weight:600}
+  .corhist small{display:block;color:var(--gray);font-size:11px;font-weight:400;margin-top:1px}
   .buscarbtn{width:100%;border:2px solid var(--line2);background:var(--surf);color:var(--ink);font-family:inherit;font-size:16px;font-weight:800;padding:14px;border-radius:14px;cursor:pointer;margin-bottom:20px}
   .buscarbtn:active{background:var(--bg)}
   .contbtn{width:100%;min-height:56px;border-radius:13px;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer;border:2px solid var(--line2);background:var(--surf);color:var(--ink);margin-bottom:10px}
@@ -508,6 +514,19 @@
   <div class="kh"><span class="lbl">Generar reporte</span><button class="close" id="repClose">✕</button></div>
   <button class="contbtn primary" id="repPdf">📄 Exportar PDF</button>
   <button class="contbtn" id="repExcel">📊 Exportar Excel</button>
+</div></div>
+
+<div class="ov" id="ovCorregir"><div class="pad">
+  <div class="kh"><span class="lbl">✏️ Corregir fichada</span><button class="close" id="corClose">✕</button></div>
+  <div id="corInfo" class="corinfo"></div>
+  <label class="hlbl">Hora de entrada</label>
+  <input type="time" id="corEntrada" class="hsel">
+  <label class="hlbl">Hora de salida</label>
+  <input type="time" id="corSalida" class="hsel">
+  <label class="hlbl">Motivo (obligatorio)</label>
+  <input type="text" id="corMotivo" class="hsel" placeholder="Ej: olvidó fichar la salida">
+  <button class="contbtn primary" id="corGuardar" style="margin-top:12px">Guardar corrección</button>
+  <div id="corHist"></div>
 </div></div>
 
 <div class="toast" id="toast">✓ Pedido confirmado</div>
@@ -959,17 +978,21 @@ const HorasService={
     const res={desde,hasta,label:lbl,generado:new Date(),empleados:[]};
     if(!db)return res;
     try{
-      let q=db.from('est_fichajes').select('*').gte('fecha',desde).lte('fecha',hasta).order('fecha',{ascending:true}).order('created_at',{ascending:true});
+      let q=db.from('est_fichajes').select('*').gte('fecha',desde).lte('fecha',hasta);
       if(emp&&emp!=='__all__')q=q.eq('operario',emp);
       const {data}=await q;
-      const byOpDia={};(data||[]).forEach(e=>{const k=e.operario+'|'+e.fecha;(byOpDia[k]=byOpDia[k]||[]).push({tipo:e.tipo,hhmm:e.hora});});
+      const byOpDia={};(data||[]).forEach(e=>{const k=e.operario+'|'+e.fecha;(byOpDia[k]=byOpDia[k]||[]).push(e);});
       const ops={};
-      Object.entries(byOpDia).forEach(([k,ev])=>{const i=k.indexOf('|');const op=k.slice(0,i),fecha=k.slice(i+1);const w=workedMinClosed(ev);if(w<=0)return;
+      Object.entries(byOpDia).forEach(([k,rows])=>{const i=k.indexOf('|');const op=k.slice(0,i),fecha=k.slice(i+1);
+        rows.sort((a,b)=>String(a.hora).localeCompare(String(b.hora)));
+        const w=workedMinClosed(rows.map(r=>({tipo:r.tipo,hhmm:r.hora})));
+        const entradaRow=rows.find(r=>r.tipo==='entrada');const sals=rows.filter(r=>r.tipo==='salida');const salidaRow=sals.length?sals[sals.length-1]:null;
+        const estado=entradaRow&&salidaRow?'completo':(entradaRow?'falta_salida':(salidaRow?'falta_entrada':'sin'));
         const dt=new Date(fecha+'T12:00:00');const dow=dt.getDay();const allExtra=(dow===0||dow===6||isFeriado(dt));
-        let norm,ext;if(allExtra){norm=0;ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}
-        (ops[op]=ops[op]||{dias:[],tN:0,tE:0}).dias.push({fecha,worked:w,normal:norm,extra:ext,tipo:allExtra?((dow===0||dow===6)?'fin de semana':'feriado'):'normal'});
-        ops[op].tN+=norm;ops[op].tE+=ext;});
-      res.empleados=Object.entries(ops).map(([op,v])=>({empleado:op,dias:v.dias.sort((a,b)=>a.fecha<b.fecha?-1:1),totNormal:v.tN,totExtra:v.tE,diasTrab:v.dias.length,totMin:v.tN+v.tE})).sort((a,b)=>a.empleado.localeCompare(b.empleado));
+        let norm=0,ext=0;if(w>0){if(allExtra){ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}}
+        (ops[op]=ops[op]||{dias:[],tN:0,tE:0,dT:0}).dias.push({fecha,worked:w,normal:norm,extra:ext,tipo:allExtra?((dow===0||dow===6)?'fin de semana':'feriado'):'normal',estado,entradaId:entradaRow?entradaRow.id:null,entradaHora:entradaRow?entradaRow.hora:'',salidaId:salidaRow?salidaRow.id:null,salidaHora:salidaRow?salidaRow.hora:''});
+        ops[op].tN+=norm;ops[op].tE+=ext;if(w>0)ops[op].dT++;});
+      res.empleados=Object.entries(ops).map(([op,v])=>({empleado:op,dias:v.dias.sort((a,b)=>a.fecha<b.fecha?-1:1),totNormal:v.tN,totExtra:v.tE,diasTrab:v.dT,totMin:v.tN+v.tE})).sort((a,b)=>a.empleado.localeCompare(b.empleado));
     }catch(e){console.error('HorasService',e);}
     return res;
   },
@@ -1014,11 +1037,47 @@ $('#horCalc').onclick=async()=>{const r=horRangoFechas();if(!r[0]||!r[1]){toastM
   horModelo=await HorasService.modelo(r[0],r[1],$('#horEmp').value,r[2]);renderHorasRes(horModelo);
   $('#horExport').style.display=horModelo.empleados.length?'block':'none';};
 function renderHorasRes(m){
-  if(!m.empleados.length){$('#horRes').innerHTML='<div class="admuted" style="padding:16px">Sin fichajes cerrados en el período.</div>';return;}
-  $('#horRes').innerHTML=m.empleados.map(e=>{const dias=e.dias.map(d=>`<div class="hday"><span>${d.fecha.slice(5)}${d.tipo!=='normal'?' · '+d.tipo:''}</span><span class="num">${HorasService.hm(d.normal)} + <b>${HorasService.hm(d.extra)}</b></span></div>`).join('');return `<div class="adcard"><div class="adh">${e.empleado}<small>${e.diasTrab} días · ${HorasService.hm(e.totMin)} total</small></div><div class="adbd"><div class="hsum"><div><div class="v num">${HorasService.hm(e.totNormal)}</div><div class="k">Normales</div></div><div><div class="v num">${HorasService.hm(e.totExtra)}</div><div class="k">Extras</div></div><div><div class="v num">${e.diasTrab}</div><div class="k">Días</div></div></div>${dias}</div></div>`;}).join('');
+  if(!m.empleados.length){$('#horRes').innerHTML='<div class="admuted" style="padding:16px">Sin fichajes en el período.</div>';return;}
+  const EST={completo:'🟢',falta_salida:'🟡',falta_entrada:'🔴',sin:'⚪'};
+  $('#horRes').innerHTML=m.empleados.map((e,ei)=>{const dias=e.dias.map((d,di)=>`<div class="hday"><span>${EST[d.estado]||''} ${d.fecha.slice(5)}${d.tipo!=='normal'?' · '+d.tipo:''}</span><span class="hdayr"><span class="num">${HorasService.hm(d.normal)} + <b>${HorasService.hm(d.extra)}</b></span><button class="corbtn" data-e="${ei}" data-d="${di}">✏️</button></span></div>`).join('');return `<div class="adcard"><div class="adh">${e.empleado}<small>${e.diasTrab} días · ${HorasService.hm(e.totMin)} total</small></div><div class="adbd"><div class="hsum"><div><div class="v num">${HorasService.hm(e.totNormal)}</div><div class="k">Normales</div></div><div><div class="v num">${HorasService.hm(e.totExtra)}</div><div class="k">Extras</div></div><div><div class="v num">${e.diasTrab}</div><div class="k">Días</div></div></div>${dias}</div></div>`;}).join('');
+  $('#horRes').querySelectorAll('.corbtn').forEach(b=>b.onclick=()=>{const e=m.empleados[+b.dataset.e];abrirCorregir(e.empleado,e.dias[+b.dataset.d]);});
 }
 $('#horPdf').onclick=()=>{if(horModelo&&horModelo.empleados.length)HorasService.pdf(horModelo);};
 $('#horExcel').onclick=()=>{if(horModelo&&horModelo.empleados.length)HorasService.excel(horModelo);};
+
+/* ── Corrección manual de fichadas (admin · con auditoría) ── */
+let corCtx=null;
+function abrirCorregir(op,d){
+  corCtx={op,fecha:d.fecha,entradaId:d.entradaId,entradaHora:d.entradaHora,salidaId:d.salidaId,salidaHora:d.salidaHora};
+  $('#corInfo').innerHTML=`${op} · ${d.fecha}`;
+  $('#corEntrada').value=d.entradaHora||'';$('#corSalida').value=d.salidaHora||'';$('#corMotivo').value='';$('#corHist').innerHTML='';
+  $('#ovCorregir').classList.add('on');
+  cargarHistCorreccion(op,d.fecha);
+}
+async function cargarHistCorreccion(op,fecha){
+  if(!db)return;
+  try{const {data}=await db.from('auditoria').select('*').eq('entidad','fichaje').eq('entidad_id',op+'|'+fecha).order('created_at',{ascending:false});
+    if(data&&data.length)$('#corHist').innerHTML='<div class="hlbl" style="margin-top:14px">Historial de correcciones</div>'+data.map(a=>{const d=a.detalle||{};const dt=new Date(a.created_at);return `<div class="corhist">${d.campo||''}: ${d.hora_original?d.hora_original+' → ':''}${d.hora_nueva||''} · ${d.motivo||''}<small>${a.usuario||'—'} · ${dt.toLocaleString('es-AR')}</small></div>`;}).join('');
+  }catch(e){console.error('histCorreccion',e);}
+}
+$('#corClose').onclick=()=>$('#ovCorregir').classList.remove('on');
+$('#corGuardar').onclick=async()=>{
+  if(!corCtx||!db)return;
+  const motivo=$('#corMotivo').value.trim();
+  if(!motivo){toastMsg('El motivo es obligatorio');return;}
+  const nE=$('#corEntrada').value,nS=$('#corSalida').value;const cambios=[];
+  if(nE&&nE!==(corCtx.entradaHora||'')){cambios.push(corCtx.entradaId?{tipo:'update',id:corCtx.entradaId,campo:'entrada',orig:corCtx.entradaHora,nueva:nE}:{tipo:'insert',campo:'entrada',nueva:nE});}
+  if(nS&&nS!==(corCtx.salidaHora||'')){cambios.push(corCtx.salidaId?{tipo:'update',id:corCtx.salidaId,campo:'salida',orig:corCtx.salidaHora,nueva:nS}:{tipo:'insert',campo:'salida',nueva:nS});}
+  if(!cambios.length){toastMsg('No hay cambios para guardar');return;}
+  try{
+    for(const c of cambios){
+      if(c.tipo==='update')await db.from('est_fichajes').update({hora:c.nueva}).eq('id',c.id);
+      else await db.from('est_fichajes').insert({operario:corCtx.op,tipo:c.campo,hora:c.nueva,fecha:corCtx.fecha});
+      await db.from('auditoria').insert({entidad:'fichaje',entidad_id:corCtx.op+'|'+corCtx.fecha,accion:c.tipo==='update'?'modificar':'crear',detalle:{campo:c.campo,hora_original:c.orig||null,hora_nueva:c.nueva,motivo},usuario:adminWho||'admin'});
+    }
+    $('#ovCorregir').classList.remove('on');toastMsg('✓ Fichada corregida');$('#horCalc').click();
+  }catch(e){console.error('corregir',e);toastMsg('⚠ No se pudo guardar la corrección');}
+};
 
 /* ── Supabase: guardar y cargar ── */
 function toastMsg(txt){const t=$('#toast');t.textContent=txt;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200);}
