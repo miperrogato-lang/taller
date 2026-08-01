@@ -122,6 +122,9 @@
   .impbox .implbl{font-size:12px;font-weight:800;color:#7a5c00;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
   .impfield{width:100%;background:#fff;border:2px solid var(--amber);border-radius:10px;padding:12px;font-size:22px;font-weight:800;color:var(--ink);cursor:pointer;font-family:inherit}
   .impinfo{font-size:12px;color:var(--gray);font-weight:600;margin-top:6px}
+  .calibbanner{background:#EEF6FF;border:1px solid #BBD9F5;border-radius:12px;padding:12px 14px;font-size:13px;color:#1a4971;margin-bottom:16px;line-height:1.5}
+  .calibmini{background:#EEF6FF;border:1px solid #BBD9F5;border-radius:10px;padding:10px 13px;font-size:14px;font-weight:700;color:#1a4971;margin-bottom:14px}
+  .calibmini b{font-size:16px}.calibmini small{font-weight:400;color:#5a7ea3}
   .prezwrap{display:flex;flex-wrap:wrap;gap:8px}
   .tabs{display:flex;gap:6px;background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:5px;margin-bottom:16px}
   .tabs button{flex:1;background:none;border:none;font-family:inherit;font-size:14px;font-weight:800;color:var(--gray);padding:10px 4px;border-radius:8px;cursor:pointer}
@@ -322,6 +325,7 @@
       <button class="histbtn" id="anaBtn">Analítica de producción ›</button>
       <button class="histbtn" id="horBtn">Horas del personal ›</button>
       <button class="histbtn" id="ordBtn">Órdenes en proceso ›</button>
+      <button class="histbtn" id="puntBtn">Puntos de producción 🧪 ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
@@ -367,6 +371,7 @@
         <div class="adkpi"><div class="v num" id="jorBol">0</div><div class="k">Bolsas</div></div>
         <div class="adkpi"><div class="v num" id="jorImp">0</div><div class="k">Impresiones</div></div>
       </div>
+      <div class="calibmini" id="jorPuntos"></div>
       <button class="histbtn" id="repBtn">📄 Generar reporte</button>
       <div class="adcard"><div class="adh">Operarios del día</div><div class="adbd"><div id="jorOps" class="prezwrap"></div></div></div>
       <div class="adcard"><div class="adh">Por tipo de bolsa</div><div class="adbd" id="jorTipo"></div></div>
@@ -432,6 +437,17 @@
     <div class="screen" id="scOrdenes">
       <div class="adhead"><div><div class="adttl">Órdenes en proceso</div><div class="adsub">avance de producción</div></div><button class="adexit" id="ordBack">‹ Volver</button></div>
       <div id="ordList"></div>
+    </div>
+
+    <!-- PUNTOS (CALIBRACIÓN) -->
+    <div class="screen" id="scPuntos">
+      <div class="adhead"><div><div class="adttl">Puntos de producción</div><div class="adsub">🧪 mes de calibración</div></div><button class="adexit" id="puntBack">‹ Volver</button></div>
+      <div class="calibbanner">🧪 <b>Mes de calibración.</b> Los puntos son experimentales y pueden cambiar. Sirven para juntar datos reales — todavía sin efecto económico.</div>
+      <div class="tabs" id="puntTabs"><button data-p="semana">Semana</button><button data-p="mes" class="on">Mes</button><button data-p="todo">Todo</button></div>
+      <div class="adkpis"><div class="adkpi"><div class="v num" id="puntTot">0</div><div class="k">Puntos</div></div><div class="adkpi"><div class="v num" id="puntImp">0</div><div class="k">Impresiones</div></div><div class="adkpi"><div class="v num" id="puntPed">0</div><div class="k">Pedidos</div></div></div>
+      <div class="adcard"><div class="adh">Puntos por operario</div><div class="adbd" id="puntOps"></div></div>
+      <div class="adcard"><div class="adh">Puntos por medida</div><div class="adbd" id="puntMed"></div></div>
+      <div class="adcard"><div class="adh">Puntos por material</div><div class="adbd" id="puntMat"></div></div>
     </div>
 
     <!-- ARMAR -->
@@ -885,6 +901,7 @@ function openJornada(dia){
   $('#jorOps').innerHTML=r.operarios.length?r.operarios.map(o=>`<div class="prez in">${o}</div>`).join(''):'<div class="admuted">—</div>';
   $('#jorTipo').innerHTML=rankBars(r.porTipo);
   $('#jorPorOp').innerHTML=rankBars(r.porOperario);
+  const _pts=pedidos.reduce((a,p)=>a+puntosDe(p),0);const _je=$('#jorPuntos');if(_je)_je.innerHTML='🧪 Puntos del día: <b>'+Math.round(_pts).toLocaleString('es-AR')+'</b> <small>· calibración</small>';
   $('#jorPedidos').innerHTML=pedidos.length?pedidos.map(p=>{const dt=new Date(p.created_at);const fh=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');const lin=(p.est_lineas||[]).map(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;return `<div class="bline"><b>${(l.cantidad||0).toLocaleString('es-AR')}</b> ${nm} ${l.medida}<small>bolsa ${l.color_bolsa||'—'} · ${cols||'—'} · ${l.tipo_tinta||'—'}</small></div>`;}).join('');return `<div class="bcard"><div class="bch"><span><b>#${p.numero}</b>${p.compartido?' · compartido':''}</span><span>${fh} · ${p.operario}</span></div>${lin}</div>`;}).join(''):'<div class="admuted">Sin pedidos.</div>';
   show('scJornada');
 }
@@ -1136,6 +1153,43 @@ async function renderOrdenes(){
   }catch(e){console.error('renderOrdenes',e);c.innerHTML='<div class="admuted" style="padding:16px">No se pudo cargar.</div>';}
 }
 
+/* ── Puntos de producción (calibración · tabla editable en Supabase) ── */
+let PUNTOS_TABLA={},PUNTOS_MULT=[];
+async function loadPuntos(){
+  if(!db)return;
+  try{
+    const {data:pt}=await db.from('est_puntos').select('*');PUNTOS_TABLA={};(pt||[]).forEach(r=>{PUNTOS_TABLA[r.material+'|'+r.medida]=Number(r.puntos);});
+    const {data:mt}=await db.from('est_puntos_mult').select('*').order('cantidad',{ascending:true});PUNTOS_MULT=(mt||[]).map(r=>[Number(r.cantidad),Number(r.mult)]);
+  }catch(e){console.error('loadPuntos',e);}
+}
+function multCantidad(q){
+  const A=PUNTOS_MULT;if(!A.length)return 1;
+  if(q<=A[0][0])return A[0][0]?q/A[0][0]*A[0][1]:A[0][1];
+  for(let i=0;i<A.length-1;i++){if(q<=A[i+1][0]){const x0=A[i][0],y0=A[i][1],x1=A[i+1][0],y1=A[i+1][1];return y0+(y1-y0)*(q-x0)/(x1-x0);}}
+  const n=A.length,x0=A[n-2][0],y0=A[n-2][1],x1=A[n-1][0],y1=A[n-1][1],slope=(y1-y0)/(x1-x0);return y1+slope*(q-x1);
+}
+function puntosLinea(prod,medida,cantidad){const base=PUNTOS_TABLA[prod+'|'+medida];if(base==null)return 0;return base*multCantidad(cantidad||0);}
+function puntosDe(p){const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+puntosLinea((l.producto??l.prod),(l.medida??l.med),((l.cantidad??l.qty)||0)),0);}
+function redondearObj(o){const r={};for(const k in o)r[k]=Math.round(o[k]);return r;}
+let puntPeriodo='mes';
+$('#puntBtn').onclick=()=>{show('scPuntos');renderPuntos();};
+$('#puntBack').onclick=()=>show('scAdmin',false);
+$('#puntTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...$('#puntTabs').children].forEach(x=>x.classList.toggle('on',x===b));puntPeriodo=b.dataset.p;renderPuntos();});
+async function renderPuntos(){
+  let start;const now=new Date();
+  if(puntPeriodo==='semana'){const off=(now.getDay()+6)%7;start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-off).toISOString();}
+  else if(puntPeriodo==='mes'){start=new Date(now.getFullYear(),now.getMonth(),1).toISOString();}
+  else start='2000-01-01T00:00:00.000Z';
+  ['puntOps','puntMed','puntMat'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
+  const peds=await fetchPedidosRango(start,null);
+  let tot=0,imp=0;const ops={},med={},mat={};
+  peds.forEach(p=>{const pp=puntosDe(p);tot+=pp;imp+=impresionesDe(p);ops[p.operario]=(ops[p.operario]||0)+pp;(p.est_lineas||[]).forEach(l=>{const pl=puntosLinea(l.producto,l.medida,l.cantidad||0);med[l.medida]=(med[l.medida]||0)+pl;const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;mat[nm]=(mat[nm]||0)+pl;});});
+  $('#puntTot').textContent=Math.round(tot).toLocaleString('es-AR');$('#puntImp').textContent=imp.toLocaleString('es-AR');$('#puntPed').textContent=peds.length;
+  $('#puntOps').innerHTML=rankBarsN(redondearObj(ops),null,12);
+  $('#puntMed').innerHTML=rankBarsN(redondearObj(med),null,14);
+  $('#puntMat').innerHTML=rankBarsN(redondearObj(mat),null,8);
+}
+
 /* ── Supabase: guardar y cargar ── */
 function toastMsg(txt){const t=$('#toast');t.textContent=txt;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200);}
 async function savePedido(ped){
@@ -1207,7 +1261,7 @@ async function delFeriado(id){if(db&&!String(id).startsWith('tmp')){try{await db
 $('#ferAdd').onclick=addFeriado;
 
 /* init */
-refreshHome();scStack.push('scHome');loadEmpleados().then(loadData);
+refreshHome();scStack.push('scHome');loadEmpleados().then(loadData);loadPuntos();
 </script>
 </body>
 </html>
