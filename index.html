@@ -266,6 +266,14 @@
 
   .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(80px);background:var(--ink);color:#fff;padding:15px 22px;border-radius:14px;font-weight:700;font-size:15px;box-shadow:var(--shadow);opacity:0;transition:.3s;z-index:60}
   .toast.on{transform:translateX(-50%);opacity:1}
+  /* ── liquidación ── */
+  .liqrow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:14px;font-weight:600}
+  .liqrow span{color:var(--gray)}
+  .liqrow b{color:var(--ink);font-family:ui-monospace,monospace}
+  .liqtot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:12px 15px;background:var(--amber);border-radius:11px;font-weight:800;font-size:17px}
+  .liqperbtn{width:100%;min-height:56px;border-radius:13px;font-family:inherit;font-size:17px;font-weight:800;cursor:pointer;border:2px solid var(--line2);background:var(--surf);color:var(--ink);margin-bottom:10px}
+  .liqperbtn.on{background:var(--amber);border-color:var(--amber)}
+  .liqperbtn:active{transform:scale(.99)}
 </style>
 </head>
 <body>
@@ -332,9 +340,11 @@
       <button class="histbtn" id="histBtn">Historial de jornadas ›</button>
       <button class="histbtn" id="anaBtn">Analítica de producción ›</button>
       <button class="histbtn" id="horBtn">Horas del personal ›</button>
+      <button class="histbtn" id="liqBtn">Liquidación de sueldos ›</button>
       <button class="histbtn" id="ordBtn">Órdenes en proceso ›</button>
       <button class="histbtn" id="puntBtn">Puntos de producción 🧪 ›</button>
       <button class="histbtn" id="cfgBtn">Configuración de puntos ⚙️ ›</button>
+      <button class="histbtn" id="liqCfgBtn">Configuración de liquidación ⚙️ ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
@@ -467,6 +477,59 @@
       <div class="adcard"><div class="adh">Multiplicadores por cantidad</div><div class="adbd"><div id="cfgMult"></div><button class="addrow" id="cfgAddMult">+ Agregar fila</button></div></div>
       <button class="hero-btn half dark" id="cfgSave" style="width:100%;min-height:52px;font-size:16px">Guardar cambios</button>
       <div id="cfgMsg" style="text-align:center;margin-top:10px;font-weight:700;color:#166534"></div>
+    </div>
+
+    <!-- LIQUIDACIÓN DE SUELDOS -->
+    <div class="screen" id="scLiq">
+      <div class="adhead">
+        <div><div class="adttl">Liquidación de sueldos</div><div class="adsub">preliquidación quincenal · uso interno</div></div>
+        <button class="adexit" id="liqBack">‹ Volver</button>
+      </div>
+      <button class="histbtn" id="liqHistBtn">Historial de liquidaciones ›</button>
+      <div class="adcard"><div class="adbd">
+        <label class="hlbl">Empleado</label>
+        <select id="liqEmp" class="hsel"></select>
+        <label class="hlbl">Período</label>
+        <button class="liqperbtn on" data-t="q1">📅 1ª Quincena</button>
+        <button class="liqperbtn" data-t="q2">📅 2ª Quincena</button>
+        <button class="liqperbtn" data-t="custom">Período personalizado</button>
+        <div id="liqCustom" style="display:none">
+          <div class="hrow"><span>Desde</span><input type="date" id="liqDesde"></div>
+          <div class="hrow"><span>Hasta</span><input type="date" id="liqHasta"></div>
+        </div>
+        <div class="hlbl" style="margin-top:12px">Rango</div>
+        <div id="liqRangoInfo" style="font-family:ui-monospace,monospace;font-size:14px;color:var(--ink);font-weight:700">—</div>
+        <button class="hero-btn half dark" id="liqCalc" style="min-height:52px;font-size:16px;width:100%;margin-top:14px">Calcular liquidación</button>
+      </div></div>
+      <div id="liqRes"></div>
+      <div id="liqSaveWrap" style="display:none"><button class="hero-btn half" id="liqSave" style="min-height:54px;font-size:16px;width:100%;margin-bottom:12px">💾 Guardar liquidación</button></div>
+      <div id="liqExport" style="display:none">
+        <button class="contbtn primary" id="liqPdf">📄 Exportar PDF</button>
+        <button class="contbtn" id="liqExcel">📊 Exportar Excel</button>
+      </div>
+    </div>
+
+    <!-- HISTORIAL DE LIQUIDACIONES -->
+    <div class="screen" id="scLiqHist">
+      <div class="adhead"><div><div class="adttl">Historial de liquidaciones</div><div class="adsub">respaldo · tocá 📄 para reexportar</div></div><button class="adexit" id="liqHistBack">‹ Volver</button></div>
+      <div id="liqHistList"></div>
+    </div>
+
+    <!-- CONFIGURACIÓN DE LIQUIDACIÓN -->
+    <div class="screen" id="scLiqCfg">
+      <div class="adhead"><div><div class="adttl">Configuración de liquidación</div><div class="adsub">valores hora</div></div><button class="adexit" id="liqCfgBack">‹ Volver</button></div>
+      <div class="calibbanner">Los cambios aplican a las <b>liquidaciones nuevas</b>. Las que ya guardaste quedan congeladas con los valores del momento.</div>
+      <div class="adcard"><div class="adbd">
+        <label class="hlbl">Valor hora normal</label>
+        <input type="number" id="liqcfgN" class="hsel num" placeholder="5000">
+        <label class="hlbl">Valor hora extra</label>
+        <input type="number" id="liqcfgE" class="hsel num" placeholder="8000">
+        <label class="hlbl">Valor hora feriado</label>
+        <input type="number" id="liqcfgF" class="hsel num" placeholder="8000">
+        <p style="font-size:12px;color:var(--gray);margin:12px 2px 0;line-height:1.5">El feriado se paga como día (6 h a valor normal) aunque no se trabaje; las horas trabajadas en feriado ya van como extra. El "valor hora feriado" queda guardado para cuando quieras separarlo.</p>
+      </div></div>
+      <button class="hero-btn half dark" id="liqcfgSave" style="width:100%;min-height:52px;font-size:16px">Guardar valores</button>
+      <div id="liqcfgMsg" style="text-align:center;margin-top:10px;font-weight:700;color:#166534"></div>
     </div>
 
     <!-- ARMAR -->
@@ -1246,6 +1309,160 @@ async function renderPuntos(){
 }
 
 /* ── Supabase: guardar y cargar ── */
+/* ── Liquidación de sueldos (evoluciona Horas · capa de valores $) ── */
+let LIQ_CFG={valor_hora_normal:5000,valor_hora_extra:8000,valor_hora_feriado:8000};
+async function loadLiqCfg(){
+  if(!db)return;
+  try{const {data}=await db.from('liq_config').select('*').eq('id',1).maybeSingle();
+    if(data)LIQ_CFG={valor_hora_normal:Number(data.valor_hora_normal)||0,valor_hora_extra:Number(data.valor_hora_extra)||0,valor_hora_feriado:Number(data.valor_hora_feriado)||0};
+  }catch(e){console.error('loadLiqCfg',e);}
+}
+const money=v=>'$'+Math.round(v||0).toLocaleString('es-AR');
+function empByName(n){return EMPLEADOS.find(e=>(e.nombre+(e.apellido?' '+e.apellido:''))===n)||null;}
+function isoDayStart(s){const p=s.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]).toISOString();}
+function isoDayEndExcl(s){const p=s.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]+1).toISOString();}
+function feriadosEnRango(desde,hasta){const out=[];const d1=new Date(hasta+'T12:00:00');for(let d=new Date(desde+'T12:00:00');d<=d1;d.setDate(d.getDate()+1)){if(isFeriado(d))out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));}return out;}
+
+const LiqService={
+  async modelo(desde,hasta,emp,lbl,periodoTipo){
+    const hm=await HorasService.modelo(desde,hasta,emp,lbl);
+    const feriados=feriadosEnRango(desde,hasta);
+    const prodByOp={};
+    try{const peds=await fetchPedidosRango(isoDayStart(desde),isoDayEndExcl(hasta));
+      peds.forEach(p=>{if(emp&&emp!=='__all__'&&p.operario!==emp)return;const x=prodByOp[p.operario]=prodByOp[p.operario]||{pedidos:0,bolsas:0,impresiones:0,puntos:0};x.pedidos++;x.impresiones+=impresionesDe(p);x.puntos+=puntosDe(p);(p.est_lineas||[]).forEach(l=>x.bolsas+=(l.cantidad||0));});
+    }catch(e){console.error('LiqService prod',e);}
+    const vN=LIQ_CFG.valor_hora_normal,vE=LIQ_CFG.valor_hora_extra,vF=LIQ_CFG.valor_hora_feriado;
+    const empleados=hm.empleados.map(e=>{
+      const sN=e.totNormal/60*vN,sX=e.totExtra/60*vE;
+      const montoFer=feriados.length*6*vN;
+      const subtotal=sN+sX;const total=subtotal+montoFer;
+      const ref=empByName(e.empleado);
+      return {empleado:e.empleado,empleado_id:ref?String(ref.id):null,dias:e.dias,diasTrab:e.diasTrab,
+        normalMin:e.totNormal,extraMin:e.totExtra,totalMin:e.totMin,vN,vE,vF,
+        subNormal:sN,subExtra:sX,feriadosPagos:feriados.length,montoFeriados:montoFer,
+        subtotal,total,prod:prodByOp[e.empleado]||{pedidos:0,bolsas:0,impresiones:0,puntos:0}};
+    });
+    return {desde,hasta,label:lbl,periodoTipo:periodoTipo||'personalizado',generado:new Date(),vN,vE,vF,feriados,empleados};
+  },
+  pdf(m){
+    const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});const W=doc.internal.pageSize.getWidth(),Hp=doc.internal.pageSize.getHeight();
+    const header=()=>{doc.setFillColor(34,34,34);doc.rect(0,0,W,64,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('Liquidación de sueldos',40,30);doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(255,193,7);doc.text('Planilla interna · no es recibo legal',40,48);doc.setTextColor(255,255,255);doc.setFontSize(9);doc.text(m.label||'',W-40,30,{align:'right'});doc.text('Generado: '+m.generado.toLocaleString('es-AR'),W-40,46,{align:'right'});};
+    header();let y=88;
+    m.empleados.forEach(e=>{
+      if(y>Hp-230){doc.addPage();header();y=88;}
+      doc.setTextColor(34,34,34);doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text(e.empleado,40,y);
+      doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(120,120,120);doc.text('Período: '+m.desde+' a '+m.hasta,40,y+15);y+=28;
+      doc.autoTable({startY:y,theme:'grid',styles:{fontSize:9,cellPadding:4},columnStyles:{3:{halign:'right'}},headStyles:{fillColor:[245,245,245],textColor:[34,34,34]},head:[['Horas','Cantidad','Valor hora','Importe']],
+        body:[['Normales',HorasService.hm(e.normalMin),money(e.vN),money(e.subNormal)],['Extras',HorasService.hm(e.extraMin),money(e.vE),money(e.subExtra)]],
+        foot:[['Subtotal horas',HorasService.hm(e.totalMin),'',money(e.subtotal)]],footStyles:{fillColor:[240,240,240],textColor:[34,34,34],fontStyle:'bold'}});
+      y=doc.lastAutoTable.finalY+10;
+      doc.autoTable({startY:y,theme:'plain',styles:{fontSize:8,cellPadding:3,textColor:[90,126,163]},headStyles:{fillColor:[238,246,255],textColor:[26,73,113],fontSize:8},head:[['Producción (informativo · no afecta el sueldo)']],
+        body:[['Pedidos: '+e.prod.pedidos+'    Bolsas: '+e.prod.bolsas.toLocaleString('es-AR')+'    Impresiones: '+e.prod.impresiones.toLocaleString('es-AR')+'    Puntos: '+Math.round(e.prod.puntos).toLocaleString('es-AR')]]});
+      y=doc.lastAutoTable.finalY+10;
+      const liqBody=[['Subtotal horas','',money(e.subtotal)]];
+      if(e.feriadosPagos)liqBody.push(['Feriados pagos',e.feriadosPagos+' × '+money(6*e.vN),money(e.montoFeriados)]);
+      doc.autoTable({startY:y,theme:'grid',styles:{fontSize:10,cellPadding:5},columnStyles:{2:{halign:'right'}},head:[['Liquidación','','']],headStyles:{fillColor:[34,34,34],textColor:[255,255,255]},
+        body:liqBody,foot:[['TOTAL','',money(e.total)]],footStyles:{fillColor:[255,193,7],textColor:[34,34,34],fontStyle:'bold',fontSize:12}});
+      y=doc.lastAutoTable.finalY+24;
+    });
+    const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(140,140,140);doc.text('Liquidación de sueldos · uso interno · '+m.generado.toLocaleString('es-AR'),40,Hp-20);doc.text('Pág. '+i+'/'+pages,W-40,Hp-20,{align:'right'});}
+    doc.save('Liquidacion_'+m.desde+'_'+m.hasta+'.pdf');
+  },
+  excel(m){
+    const XLSX=window.XLSX;const wb=XLSX.utils.book_new();
+    const res=[['Liquidación de sueldos — planilla interna'],['Período',(m.label||'')+' ('+m.desde+' a '+m.hasta+')'],['Generado',m.generado.toLocaleString('es-AR')],[],
+      ['Empleado','Hs normales','Hs extras','Valor normal','Valor extra','Subtotal horas','Feriados pagos','Monto feriados','TOTAL','Pedidos','Bolsas','Impresiones','Puntos']];
+    m.empleados.forEach(e=>res.push([e.empleado,HorasService.hdec(e.normalMin),HorasService.hdec(e.extraMin),e.vN,e.vE,Math.round(e.subtotal),e.feriadosPagos,Math.round(e.montoFeriados),Math.round(e.total),e.prod.pedidos,e.prod.bolsas,e.prod.impresiones,Math.round(e.prod.puntos)]));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(res),'Liquidación');
+    XLSX.writeFile(wb,'Liquidacion_'+m.desde+'_'+m.hasta+'.xlsx');
+  }
+};
+
+let liqModelo=null,liqTipo='q1',liqDesde=null,liqHasta=null,liqLbl='';
+function quincenaRango(which){const now=new Date();const y=now.getFullYear(),m=now.getMonth();const iso=dd=>y+'-'+String(m+1).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
+  if(which===1)return[iso(1),iso(15),'1ª quincena · '+H_MES[m]+' '+y,'q1'];
+  const last=new Date(y,m+1,0).getDate();return[iso(16),iso(last),'2ª quincena · '+H_MES[m]+' '+y,'q2'];}
+function setLiqPeriodo(t){liqTipo=t;$('#liqCustom').style.display=t==='custom'?'block':'none';
+  document.querySelectorAll('.liqperbtn').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  if(t==='q1'||t==='q2'){const r=quincenaRango(t==='q1'?1:2);liqDesde=r[0];liqHasta=r[1];liqLbl=r[2];$('#liqRangoInfo').textContent=r[0]+'  a  '+r[1];}
+  else{$('#liqRangoInfo').textContent='Elegí las fechas abajo';}}
+document.querySelectorAll('.liqperbtn').forEach(b=>b.onclick=()=>setLiqPeriodo(b.dataset.t));
+$('#liqBtn').onclick=()=>{const s=$('#liqEmp');s.innerHTML='<option value="__all__">Todos los empleados</option>'+EQUIPO.map(n=>`<option value="${n}">${n}</option>`).join('');liqModelo=null;$('#liqRes').innerHTML='';$('#liqExport').style.display='none';$('#liqSaveWrap').style.display='none';setLiqPeriodo('q1');show('scLiq');};
+$('#liqBack').onclick=()=>show('scAdmin',false);
+$('#liqCalc').onclick=async()=>{
+  if(liqTipo==='custom'){liqDesde=$('#liqDesde').value;liqHasta=$('#liqHasta').value;liqLbl='Personalizado';if(!liqDesde||!liqHasta){toastMsg('Elegí las fechas');return;}}
+  if(!liqDesde||!liqHasta){toastMsg('Elegí el período');return;}
+  $('#liqRes').innerHTML='<div class="admuted" style="padding:16px">Calculando…</div>';$('#liqExport').style.display='none';$('#liqSaveWrap').style.display='none';
+  liqModelo=await LiqService.modelo(liqDesde,liqHasta,$('#liqEmp').value,liqLbl,liqTipo);
+  renderLiqRes(liqModelo);
+  const has=liqModelo.empleados.length>0;$('#liqExport').style.display=has?'block':'none';$('#liqSaveWrap').style.display=has?'block':'none';
+};
+function renderLiqRes(m){
+  if(!m.empleados.length){$('#liqRes').innerHTML='<div class="admuted" style="padding:16px">Sin horas registradas en el período.</div>';return;}
+  const hoy=new Date().toLocaleDateString('es-AR');
+  $('#liqRes').innerHTML=m.empleados.map(e=>{
+    const feriLine=e.feriadosPagos?`<div class="liqrow"><span>Feriados pagos (${e.feriadosPagos} × ${money(6*e.vN)})</span><b>${money(e.montoFeriados)}</b></div>`:'';
+    return `<div class="adcard"><div class="adh">${e.empleado}<small>${m.label} · liquidado ${hoy}</small></div><div class="adbd">
+      <div class="hsum"><div><div class="v num">${HorasService.hm(e.normalMin)}</div><div class="k">Normales</div></div><div><div class="v num">${HorasService.hm(e.extraMin)}</div><div class="k">Extras</div></div><div><div class="v num">${HorasService.hm(e.totalMin)}</div><div class="k">Total</div></div></div>
+      <div class="calibmini" style="margin:2px 0 12px">Producción (info): Pedidos ${e.prod.pedidos} · Bolsas ${e.prod.bolsas.toLocaleString('es-AR')} · Impresiones ${e.prod.impresiones.toLocaleString('es-AR')} · Puntos ${Math.round(e.prod.puntos).toLocaleString('es-AR')}</div>
+      <div class="liqrow"><span>Normales · ${HorasService.hm(e.normalMin)} × ${money(e.vN)}</span><b>${money(e.subNormal)}</b></div>
+      <div class="liqrow"><span>Extras · ${HorasService.hm(e.extraMin)} × ${money(e.vE)}</span><b>${money(e.subExtra)}</b></div>
+      <div class="liqrow"><span>Subtotal horas</span><b>${money(e.subtotal)}</b></div>
+      ${feriLine}
+      <div class="liqtot"><span>TOTAL</span><span class="num">${money(e.total)}</span></div>
+    </div></div>`;
+  }).join('');
+}
+$('#liqPdf').onclick=()=>{if(liqModelo&&liqModelo.empleados.length)LiqService.pdf(liqModelo);};
+$('#liqExcel').onclick=()=>{if(liqModelo&&liqModelo.empleados.length)LiqService.excel(liqModelo);};
+$('#liqSave').onclick=async()=>{
+  if(!liqModelo||!liqModelo.empleados.length)return;
+  if(!db){toastMsg('Sin conexión');return;}
+  const btn=$('#liqSave');btn.disabled=true;const prev=btn.textContent;btn.textContent='Guardando…';
+  try{
+    const rows=liqModelo.empleados.map(e=>({id:uuid(),empleado_id:e.empleado_id,empleado_nombre:e.empleado,periodo_tipo:liqModelo.periodoTipo,fecha_desde:liqModelo.desde,fecha_hasta:liqModelo.hasta,
+      horas_normales:HorasService.hdec(e.normalMin),horas_extras:HorasService.hdec(e.extraMin),horas_total:HorasService.hdec(e.totalMin),
+      valor_hora_normal:e.vN,valor_hora_extra:e.vE,valor_hora_feriado:e.vF,feriados_pagos:e.feriadosPagos,monto_feriados:Math.round(e.montoFeriados),
+      subtotal:Math.round(e.subtotal),total:Math.round(e.total),prod_pedidos:e.prod.pedidos,prod_bolsas:e.prod.bolsas,prod_impresiones:e.prod.impresiones,prod_puntos:Math.round(e.prod.puntos),creado_por:adminWho||'admin'}));
+    for(const r of rows)await dbInsert('liq_liquidaciones',r);
+    toastMsg('✓ Liquidación guardada ('+rows.length+')');
+  }catch(e){console.error('liqSave',e);toastMsg('⚠ No se pudo guardar');}
+  btn.disabled=false;btn.textContent=prev;
+};
+
+$('#liqHistBtn').onclick=()=>{show('scLiqHist');renderLiqHist();};
+$('#liqHistBack').onclick=()=>show('scLiq',false);
+let liqHistCache=[];
+async function renderLiqHist(){
+  const c=$('#liqHistList');c.innerHTML='<div class="admuted" style="padding:16px">Cargando…</div>';
+  if(!db){c.innerHTML='';return;}
+  try{const {data}=await db.from('liq_liquidaciones').select('*').order('created_at',{ascending:false}).limit(300);
+    if(!data||!data.length){c.innerHTML='<div class="admuted" style="padding:16px">Todavía no hay liquidaciones guardadas.</div>';return;}
+    liqHistCache=data;
+    c.innerHTML=data.map((r,i)=>{const per=r.periodo_tipo==='q1'?'1ª quinc.':r.periodo_tipo==='q2'?'2ª quinc.':'período';return `<div class="adped"><div class="adpedinfo"><b>${r.empleado_nombre}</b> · ${per}<small>${r.fecha_desde} a ${r.fecha_hasta} · ${money(r.total)}</small></div><button class="adpeddel" data-i="${i}" style="border-color:var(--amber)">📄</button></div>`;}).join('');
+    c.querySelectorAll('.adpeddel').forEach(b=>b.onclick=()=>liqHistPdf(+b.dataset.i));
+  }catch(e){console.error('renderLiqHist',e);c.innerHTML='<div class="admuted" style="padding:16px">No se pudo cargar.</div>';}
+}
+function liqHistPdf(i){const r=liqHistCache[i];if(!r)return;
+  const e={empleado:r.empleado_nombre,normalMin:Math.round((r.horas_normales||0)*60),extraMin:Math.round((r.horas_extras||0)*60),totalMin:Math.round((r.horas_total||0)*60),
+    vN:Number(r.valor_hora_normal),vE:Number(r.valor_hora_extra),vF:Number(r.valor_hora_feriado),
+    subNormal:(r.horas_normales||0)*Number(r.valor_hora_normal),subExtra:(r.horas_extras||0)*Number(r.valor_hora_extra),
+    feriadosPagos:r.feriados_pagos||0,montoFeriados:Number(r.monto_feriados||0),subtotal:Number(r.subtotal||0),total:Number(r.total||0),
+    prod:{pedidos:r.prod_pedidos||0,bolsas:r.prod_bolsas||0,impresiones:r.prod_impresiones||0,puntos:r.prod_puntos||0}};
+  const per=r.periodo_tipo==='q1'?'1ª quincena':r.periodo_tipo==='q2'?'2ª quincena':'Período';
+  LiqService.pdf({desde:r.fecha_desde,hasta:r.fecha_hasta,label:per+' · guardada '+new Date(r.created_at).toLocaleDateString('es-AR'),generado:new Date(),empleados:[e]});
+}
+
+$('#liqCfgBtn').onclick=async()=>{await loadLiqCfg();$('#liqcfgN').value=LIQ_CFG.valor_hora_normal;$('#liqcfgE').value=LIQ_CFG.valor_hora_extra;$('#liqcfgF').value=LIQ_CFG.valor_hora_feriado;$('#liqcfgMsg').textContent='';show('scLiqCfg');};
+$('#liqCfgBack').onclick=()=>show('scAdmin',false);
+$('#liqcfgSave').onclick=async()=>{
+  if(!db){$('#liqcfgMsg').style.color='#C24A3C';$('#liqcfgMsg').textContent='Sin conexión';return;}
+  const p={id:1,valor_hora_normal:parseFloat($('#liqcfgN').value)||0,valor_hora_extra:parseFloat($('#liqcfgE').value)||0,valor_hora_feriado:parseFloat($('#liqcfgF').value)||0,updated_at:new Date().toISOString()};
+  $('#liqcfgMsg').style.color='#166534';$('#liqcfgMsg').textContent='Guardando…';
+  try{const {error}=await db.from('liq_config').upsert(p,{onConflict:'id'});if(error)throw error;LIQ_CFG={valor_hora_normal:p.valor_hora_normal,valor_hora_extra:p.valor_hora_extra,valor_hora_feriado:p.valor_hora_feriado};$('#liqcfgMsg').textContent='✓ Guardado. Aplica a liquidaciones nuevas.';}
+  catch(e){console.error('liqcfgSave',e);$('#liqcfgMsg').style.color='#C24A3C';$('#liqcfgMsg').textContent='⚠ No se pudo guardar';}
+};
+
 function toastMsg(txt){const t=$('#toast');t.textContent=txt;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200);}
 async function savePedido(ped){
   if(!db)return;
@@ -1339,7 +1556,7 @@ async function pingSupabase(){if(!db)return;try{const r=await db.from('empleados
 window.addEventListener('online',pingSupabase);window.addEventListener('offline',()=>setLinea(false));
 
 /* init */
-refreshHome();scStack.push('scHome');loadEmpleados().then(loadData);loadPuntos();
+refreshHome();scStack.push('scHome');loadEmpleados().then(loadData);loadPuntos();loadLiqCfg();
 idbOpen().then(()=>{pingSupabase();actualizarIndicador();setInterval(()=>{pingSupabase();if(enLinea)Offline.sincronizarPendientes();},20000);}).catch(()=>{});
 </script>
 </body>
