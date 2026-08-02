@@ -125,6 +125,13 @@
   .calibbanner{background:#EEF6FF;border:1px solid #BBD9F5;border-radius:12px;padding:12px 14px;font-size:13px;color:#1a4971;margin-bottom:16px;line-height:1.5}
   .calibmini{background:#EEF6FF;border:1px solid #BBD9F5;border-radius:10px;padding:10px 13px;font-size:14px;font-weight:700;color:#1a4971;margin-bottom:14px}
   .calibmini b{font-size:16px}.calibmini small{font-weight:400;color:#5a7ea3}
+  .cfgrow{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+  .cfgi{flex:1;padding:9px;border:1px solid var(--line2);border-radius:8px;font-family:inherit;font-size:14px;min-width:0;background:#fff;color:var(--ink)}
+  .cfgdel{border:none;background:#FDEDEB;color:#C24A3C;width:32px;height:32px;border-radius:8px;font-weight:800;cursor:pointer;flex:none}
+  .addrow{background:none;border:1px dashed var(--line2);border-radius:9px;padding:9px;width:100%;font-family:inherit;font-weight:700;color:var(--gray);cursor:pointer;margin-top:4px}
+  .netind{margin-left:auto;font-size:11px;font-weight:800;padding:4px 9px;border-radius:20px;white-space:nowrap;align-self:center}
+  .netind.on{background:#E7F7EE;color:#166534}
+  .netind.off{background:#FFF3E0;color:#B26A00}
   .prezwrap{display:flex;flex-wrap:wrap;gap:8px}
   .tabs{display:flex;gap:6px;background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:5px;margin-bottom:16px}
   .tabs button{flex:1;background:none;border:none;font-family:inherit;font-size:14px;font-weight:800;color:var(--gray);padding:10px 4px;border-radius:8px;cursor:pointer}
@@ -266,6 +273,7 @@
   <div class="top">
     <div class="logo" id="logo">●</div>
     <div><div class="t">Estación de carga</div><div class="s">Carga de producción</div></div>
+    <div id="netInd" class="netind on">🟢 En línea</div>
     <button class="back" id="backBtn">‹ Volver</button>
   </div>
 
@@ -326,6 +334,7 @@
       <button class="histbtn" id="horBtn">Horas del personal ›</button>
       <button class="histbtn" id="ordBtn">Órdenes en proceso ›</button>
       <button class="histbtn" id="puntBtn">Puntos de producción 🧪 ›</button>
+      <button class="histbtn" id="cfgBtn">Configuración de puntos ⚙️ ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
@@ -448,6 +457,16 @@
       <div class="adcard"><div class="adh">Puntos por operario</div><div class="adbd" id="puntOps"></div></div>
       <div class="adcard"><div class="adh">Puntos por medida</div><div class="adbd" id="puntMed"></div></div>
       <div class="adcard"><div class="adh">Puntos por material</div><div class="adbd" id="puntMat"></div></div>
+    </div>
+
+    <!-- CONFIGURACIÓN DE PUNTOS -->
+    <div class="screen" id="scPuntosCfg">
+      <div class="adhead"><div><div class="adttl">Configuración de puntos</div><div class="adsub">tabla editable</div></div><button class="adexit" id="cfgBack">‹ Volver</button></div>
+      <div class="calibbanner">Los cambios aplican <b>a la producción nueva</b>. Lo ya registrado no se recalcula.</div>
+      <div class="adcard"><div class="adh">Puntos base<small>material · medida · puntos (base 200 u)</small></div><div class="adbd"><div id="cfgBase"></div><button class="addrow" id="cfgAddBase">+ Agregar fila</button></div></div>
+      <div class="adcard"><div class="adh">Multiplicadores por cantidad</div><div class="adbd"><div id="cfgMult"></div><button class="addrow" id="cfgAddMult">+ Agregar fila</button></div></div>
+      <button class="hero-btn half dark" id="cfgSave" style="width:100%;min-height:52px;font-size:16px">Guardar cambios</button>
+      <div id="cfgMsg" style="text-align:center;margin-top:10px;font-weight:700;color:#166534"></div>
     </div>
 
     <!-- ARMAR -->
@@ -1129,9 +1148,9 @@ $('#corGuardar').onclick=async()=>{
   if(!cambios.length){toastMsg('No hay cambios para guardar');return;}
   try{
     for(const c of cambios){
-      if(c.tipo==='update')await db.from('est_fichajes').update({hora:c.nueva}).eq('id',c.id);
-      else await db.from('est_fichajes').insert({operario:corCtx.op,tipo:c.campo,hora:c.nueva,fecha:corCtx.fecha});
-      await db.from('auditoria').insert({entidad:'fichaje',entidad_id:corCtx.op+'|'+corCtx.fecha,accion:c.tipo==='update'?'modificar':'crear',detalle:{campo:c.campo,hora_original:c.orig||null,hora_nueva:c.nueva,motivo},usuario:adminWho||'admin'});
+      if(c.tipo==='update')await dbUpdate('est_fichajes',{hora:c.nueva},'id',c.id);
+      else await dbInsert('est_fichajes',{id:uuid(),operario:corCtx.op,tipo:c.campo,hora:c.nueva,fecha:corCtx.fecha});
+      await dbInsert('auditoria',{id:uuid(),entidad:'fichaje',entidad_id:corCtx.op+'|'+corCtx.fecha,accion:c.tipo==='update'?'modificar':'crear',detalle:{campo:c.campo,hora_original:c.orig||null,hora_nueva:c.nueva,motivo},usuario:adminWho||'admin'});
     }
     $('#ovCorregir').classList.remove('on');toastMsg('✓ Fichada corregida');$('#horCalc').click();
   }catch(e){console.error('corregir',e);toastMsg('⚠ No se pudo guardar la corrección');}
@@ -1153,6 +1172,42 @@ async function renderOrdenes(){
   }catch(e){console.error('renderOrdenes',e);c.innerHTML='<div class="admuted" style="padding:16px">No se pudo cargar.</div>';}
 }
 
+/* ── Configuración de puntos (editor CRUD, admin) ── */
+let cfgBaseRows=[],cfgMultRows=[];
+$('#cfgBtn').onclick=async()=>{await cargarCfg();show('scPuntosCfg');};
+$('#cfgBack').onclick=()=>show('scAdmin',false);
+async function cargarCfg(){
+  cfgBaseRows=[];cfgMultRows=[];$('#cfgMsg').textContent='';
+  if(db){try{const {data:b}=await db.from('est_puntos').select('*');cfgBaseRows=(b||[]).map(r=>({material:r.material,medida:r.medida,puntos:Number(r.puntos)}));const {data:m}=await db.from('est_puntos_mult').select('*').order('cantidad',{ascending:true});cfgMultRows=(m||[]).map(r=>({cantidad:Number(r.cantidad),mult:Number(r.mult)}));}catch(e){console.error(e);}}
+  cfgBaseRows.sort((a,b)=>String(a.material).localeCompare(String(b.material))||String(a.medida).localeCompare(String(b.medida)));
+  renderCfg();
+}
+function renderCfg(){
+  const opts=PRODUCTOS.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  $('#cfgBase').innerHTML=cfgBaseRows.map((r,i)=>`<div class="cfgrow"><select data-i="${i}" data-f="material" class="cfgi">${opts}</select><input data-i="${i}" data-f="medida" class="cfgi" value="${r.medida||''}" placeholder="45x40"><input data-i="${i}" data-f="puntos" class="cfgi num" type="number" value="${r.puntos??''}" placeholder="pts"><button class="cfgdel" data-t="base" data-i="${i}">✕</button></div>`).join('');
+  cfgBaseRows.forEach((r,i)=>{const s=$('#cfgBase').querySelector('select[data-i="'+i+'"]');if(s)s.value=r.material;});
+  $('#cfgMult').innerHTML=cfgMultRows.map((r,i)=>`<div class="cfgrow"><input data-i="${i}" data-f="cantidad" class="cfgi num" type="number" value="${r.cantidad??''}" placeholder="cantidad"><input data-i="${i}" data-f="mult" class="cfgi num" type="number" step="0.01" value="${r.mult??''}" placeholder="multiplicador"><button class="cfgdel" data-t="mult" data-i="${i}">✕</button></div>`).join('');
+  $('#cfgBase').querySelectorAll('.cfgi').forEach(el=>el.onchange=()=>{const i=+el.dataset.i,f=el.dataset.f;cfgBaseRows[i][f]=(f==='puntos')?(parseFloat(el.value)||0):el.value;});
+  $('#cfgMult').querySelectorAll('.cfgi').forEach(el=>el.onchange=()=>{const i=+el.dataset.i,f=el.dataset.f;cfgMultRows[i][f]=parseFloat(el.value)||0;});
+  document.querySelectorAll('.cfgdel').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(b.dataset.t==='base')cfgBaseRows.splice(i,1);else cfgMultRows.splice(i,1);renderCfg();});
+}
+$('#cfgAddBase').onclick=()=>{cfgBaseRows.push({material:PRODUCTOS[0].id,medida:'',puntos:0});renderCfg();};
+$('#cfgAddMult').onclick=()=>{cfgMultRows.push({cantidad:0,mult:1});renderCfg();};
+$('#cfgSave').onclick=async()=>{
+  if(!db){$('#cfgMsg').textContent='Sin conexión';return;}
+  $('#cfgMsg').style.color='#166534';$('#cfgMsg').textContent='Guardando…';
+  try{
+    await db.from('est_puntos').delete().neq('material','__none__');
+    const baseV=cfgBaseRows.filter(r=>r.material&&r.medida);
+    if(baseV.length)await db.from('est_puntos').insert(baseV.map(r=>({material:r.material,medida:r.medida,puntos:r.puntos||0})));
+    await db.from('est_puntos_mult').delete().neq('cantidad',-999999);
+    const multV=cfgMultRows.filter(r=>r.cantidad>0);
+    if(multV.length)await db.from('est_puntos_mult').insert(multV.map(r=>({cantidad:r.cantidad,mult:r.mult||1})));
+    await loadPuntos();
+    $('#cfgMsg').textContent='✓ Guardado. Aplica a la producción nueva.';
+  }catch(e){console.error('cfgSave',e);$('#cfgMsg').style.color='#C24A3C';$('#cfgMsg').textContent='⚠ No se pudo guardar';}
+};
+
 /* ── Puntos de producción (calibración · tabla editable en Supabase) ── */
 let PUNTOS_TABLA={},PUNTOS_MULT=[];
 async function loadPuntos(){
@@ -1169,7 +1224,7 @@ function multCantidad(q){
   const n=A.length,x0=A[n-2][0],y0=A[n-2][1],x1=A[n-1][0],y1=A[n-1][1],slope=(y1-y0)/(x1-x0);return y1+slope*(q-x1);
 }
 function puntosLinea(prod,medida,cantidad){const base=PUNTOS_TABLA[prod+'|'+medida];if(base==null)return 0;return base*multCantidad(cantidad||0);}
-function puntosDe(p){const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+puntosLinea((l.producto??l.prod),(l.medida??l.med),((l.cantidad??l.qty)||0)),0);}
+function puntosDe(p){const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(l.puntos!=null?Number(l.puntos):0),0);}
 function redondearObj(o){const r={};for(const k in o)r[k]=Math.round(o[k]);return r;}
 let puntPeriodo='mes';
 $('#puntBtn').onclick=()=>{show('scPuntos');renderPuntos();};
@@ -1183,7 +1238,7 @@ async function renderPuntos(){
   ['puntOps','puntMed','puntMat'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
   const peds=await fetchPedidosRango(start,null);
   let tot=0,imp=0;const ops={},med={},mat={};
-  peds.forEach(p=>{const pp=puntosDe(p);tot+=pp;imp+=impresionesDe(p);ops[p.operario]=(ops[p.operario]||0)+pp;(p.est_lineas||[]).forEach(l=>{const pl=puntosLinea(l.producto,l.medida,l.cantidad||0);med[l.medida]=(med[l.medida]||0)+pl;const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;mat[nm]=(mat[nm]||0)+pl;});});
+  peds.forEach(p=>{const pp=puntosDe(p);tot+=pp;imp+=impresionesDe(p);ops[p.operario]=(ops[p.operario]||0)+pp;(p.est_lineas||[]).forEach(l=>{const pl=(l.puntos!=null?Number(l.puntos):0);med[l.medida]=(med[l.medida]||0)+pl;const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;mat[nm]=(mat[nm]||0)+pl;});});
   $('#puntTot').textContent=Math.round(tot).toLocaleString('es-AR');$('#puntImp').textContent=imp.toLocaleString('es-AR');$('#puntPed').textContent=peds.length;
   $('#puntOps').innerHTML=rankBarsN(redondearObj(ops),null,12);
   $('#puntMed').innerHTML=rankBarsN(redondearObj(med),null,14);
@@ -1194,15 +1249,11 @@ async function renderPuntos(){
 function toastMsg(txt){const t=$('#toast');t.textContent=txt;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200);}
 async function savePedido(ped){
   if(!db)return;
-  try{
-    const {data,error}=await db.from('est_pedidos').insert({numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso',impresiones:ped.impresionesHoy||0}).select().single();
-    if(error)throw error;
-    ped.id=data.id;
-    const rows=ped.lineas.map(l=>({pedido_id:data.id,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty}));
-    const {error:e2}=await db.from('est_lineas').insert(rows);
-    if(e2)throw e2;
-    await upsertOrden(ped);
-  }catch(err){console.error('savePedido',err);toastMsg('⚠ No se pudo guardar en la nube');}
+  const pedId=uuid();ped.id=pedId;
+  await dbInsert('est_pedidos',{id:pedId,numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso',impresiones:ped.impresionesHoy||0});
+  const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:pedId,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0)}));
+  if(rows.length)await dbInsert('est_lineas',rows);
+  upsertOrden(ped);
 }
 function impCargaRaw(c){const li=(c.est_lineas||[]).reduce((a,l)=>a+((l.cantidad)||0)*((l.caras)||1)*((l.colores)||1),0);return (c.impresiones&&c.impresiones>0)?c.impresiones:li;}
 function impresionesDe(p){if(p.impresiones&&p.impresiones>0)return p.impresiones;const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(((l.cantidad??l.qty)||0)*((l.caras)||1)*((l.colores)||1)),0);}
@@ -1221,7 +1272,7 @@ async function upsertOrden(ped){
     else await db.from('est_ordenes').insert({numero,total_bolsas,total_colores,estado});
   }catch(e){console.error('upsertOrden',e);}
 }
-async function saveFichaje(operario,tipo,hora){if(!db)return;try{await db.from('est_fichajes').insert({operario,tipo,hora});}catch(err){console.error('saveFichaje',err);}}
+async function saveFichaje(operario,tipo,hora){if(!db)return;await dbInsert('est_fichajes',{id:uuid(),operario,tipo,hora});}
 async function loadData(){
   if(!db)return;
   try{
@@ -1260,8 +1311,36 @@ async function addFeriado(){const fecha=$('#ferFecha').value;const nombre=$('#fe
 async function delFeriado(id){if(db&&!String(id).startsWith('tmp')){try{await db.from('est_feriados').delete().eq('id',id);}catch(e){console.error(e);}}feriadosDB=feriadosDB.filter(f=>String(f.id)!==String(id));renderFeriados();renderHoras();}
 $('#ferAdd').onclick=addFeriado;
 
+/* ── Modo Offline (cola en IndexedDB · sincroniza al reconectar) ── */
+const uuid=()=>(self.crypto&&crypto.randomUUID?crypto.randomUUID():'x'+Date.now().toString(16)+Math.random().toString(16).slice(2));
+let enLinea=true,sincronizando=false,idb=null;
+function idbOpen(){return new Promise((res,rej)=>{try{const r=indexedDB.open('grafipack',1);r.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains('pendientes'))d.createObjectStore('pendientes',{keyPath:'opId'});};r.onsuccess=e=>{idb=e.target.result;res(idb);};r.onerror=rej;}catch(e){rej(e);}});}
+function idbStore(mode){return idb.transaction('pendientes',mode).objectStore('pendientes');}
+function idbAdd(op){return new Promise((res,rej)=>{const r=idbStore('readwrite').add(op);r.onsuccess=res;r.onerror=rej;});}
+function idbAll(){return new Promise(res=>{if(!idb)return res([]);const r=idbStore('readonly').getAll();r.onsuccess=()=>res((r.result||[]).sort((a,b)=>a.ts-b.ts));r.onerror=()=>res([]);});}
+function idbDel(id){return new Promise(res=>{const r=idbStore('readwrite').delete(id);r.onsuccess=res;r.onerror=res;});}
+function idbCount(){return new Promise(res=>{if(!idb)return res(0);const r=idbStore('readonly').count();r.onsuccess=()=>res(r.result||0);r.onerror=()=>res(0);});}
+const Offline={
+  async guardarPendiente(op){if(!idb)return;op.opId=op.opId||uuid();op.ts=op.ts||Date.now();try{await idbAdd(op);}catch(e){console.error(e);}actualizarIndicador();},
+  async cantidadPendientes(){try{return await idbCount();}catch(e){return 0;}},
+  async eliminarPendiente(id){await idbDel(id);},
+  async sincronizarPendientes(){
+    if(sincronizando||!db||!idb)return;sincronizando=true;
+    try{const ops=await idbAll();for(const op of ops){try{const r=await ejecutarOp(op);if(r&&r.error)throw r.error;await idbDel(op.opId);}catch(e){console.error('sync',e);enLinea=false;break;}}}
+    finally{sincronizando=false;actualizarIndicador();}
+  }
+};
+async function ejecutarOp(op){const t=db.from(op.tabla);if(op.tipo==='insert')return await t.upsert(op.payload,{onConflict:'id',ignoreDuplicates:true});if(op.tipo==='update')return await t.update(op.payload).eq(op.col,op.val);if(op.tipo==='delete')return await t.delete().eq(op.col,op.val);}
+async function dbInsert(tabla,payload){if(!db)return {offline:true};try{const r=await db.from(tabla).upsert(payload,{onConflict:'id',ignoreDuplicates:true});if(r.error)throw r.error;setLinea(true);return r;}catch(e){setLinea(false);await Offline.guardarPendiente({tabla,tipo:'insert',payload});return {offline:true};}}
+async function dbUpdate(tabla,payload,col,val){if(!db)return {offline:true};try{const r=await db.from(tabla).update(payload).eq(col,val);if(r.error)throw r.error;setLinea(true);return r;}catch(e){setLinea(false);await Offline.guardarPendiente({tabla,tipo:'update',payload,col,val});return {offline:true};}}
+function setLinea(v){const prev=enLinea;enLinea=v;actualizarIndicador();if(v&&!prev)Offline.sincronizarPendientes();}
+async function actualizarIndicador(){const el=$('#netInd');if(!el)return;const n=await Offline.cantidadPendientes();el.className='netind '+(enLinea?'on':'off');el.textContent=(enLinea?'🟢 En línea':'🟠 Offline')+(n?' · '+n+' pend.':'');}
+async function pingSupabase(){if(!db)return;try{const r=await db.from('empleados').select('id').limit(1);setLinea(!r.error);}catch(e){setLinea(false);}}
+window.addEventListener('online',pingSupabase);window.addEventListener('offline',()=>setLinea(false));
+
 /* init */
 refreshHome();scStack.push('scHome');loadEmpleados().then(loadData);loadPuntos();
+idbOpen().then(()=>{pingSupabase();actualizarIndicador();setInterval(()=>{pingSupabase();if(enLinea)Offline.sincronizarPendientes();},20000);}).catch(()=>{});
 </script>
 </body>
 </html>
