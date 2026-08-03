@@ -1260,8 +1260,8 @@ let cfgBaseRows=[],cfgMultRows=[];
 $('#cfgBtn').onclick=async()=>{await cargarCfg();show('scPuntosCfg');};
 $('#cfgBack').onclick=()=>show('scAdmin',false);
 async function cargarCfg(){
-  cfgBaseRows=[];cfgMultRows=[];$('#cfgMsg').textContent='';
-  if(db){try{const {data:b}=await db.from('est_puntos').select('*');cfgBaseRows=(b||[]).map(r=>({material:r.material,medida:r.medida,puntos:Number(r.puntos)}));const {data:m}=await db.from('est_puntos_mult').select('*').order('cantidad',{ascending:true});cfgMultRows=(m||[]).map(r=>({cantidad:Number(r.cantidad),mult:Number(r.mult)}));}catch(e){console.error(e);}}
+  cfgBaseRows=[];cfgMultRows=[];$('#cfgMsg').style.color='';$('#cfgMsg').textContent='';
+  if(db){try{const {data:b,error:eb}=await db.from('est_puntos').select('*');if(eb)throw eb;cfgBaseRows=(b||[]).map(r=>({material:r.material,medida:r.medida,puntos:Number(r.puntos)}));const {data:m,error:em}=await db.from('est_puntos_mult').select('*').order('cantidad',{ascending:true});if(em)throw em;cfgMultRows=(m||[]).map(r=>({cantidad:Number(r.cantidad),mult:Number(r.mult)}));}catch(e){console.error('cargarCfg',e);$('#cfgMsg').style.color='#C24A3C';$('#cfgMsg').textContent='⚠ No pude leer la configuración. ¿Faltan las tablas est_puntos? Corré el SQL en Supabase.';}}
   cfgBaseRows.sort((a,b)=>String(a.material).localeCompare(String(b.material))||String(a.medida).localeCompare(String(b.medida)));
   renderCfg();
 }
@@ -1277,18 +1277,18 @@ function renderCfg(){
 $('#cfgAddBase').onclick=()=>{cfgBaseRows.push({material:PRODUCTOS[0].id,medida:'',puntos:0});renderCfg();};
 $('#cfgAddMult').onclick=()=>{cfgMultRows.push({cantidad:0,mult:1});renderCfg();};
 $('#cfgSave').onclick=async()=>{
-  if(!db){$('#cfgMsg').textContent='Sin conexión';return;}
+  if(!db){$('#cfgMsg').style.color='#C24A3C';$('#cfgMsg').textContent='Sin conexión';return;}
   $('#cfgMsg').style.color='#166534';$('#cfgMsg').textContent='Guardando…';
   try{
-    await db.from('est_puntos').delete().neq('material','__none__');
-    const baseV=cfgBaseRows.filter(r=>r.material&&r.medida);
-    if(baseV.length)await db.from('est_puntos').insert(baseV.map(r=>({material:r.material,medida:r.medida,puntos:r.puntos||0})));
-    await db.from('est_puntos_mult').delete().neq('cantidad',-999999);
-    const multV=cfgMultRows.filter(r=>r.cantidad>0);
-    if(multV.length)await db.from('est_puntos_mult').insert(multV.map(r=>({cantidad:r.cantidad,mult:r.mult||1})));
+    let res=await db.from('est_puntos').delete().neq('material','__none__');if(res.error)throw res.error;
+    const baseV=cfgBaseRows.filter(x=>x.material&&x.medida);
+    if(baseV.length){res=await db.from('est_puntos').insert(baseV.map(x=>({material:x.material,medida:x.medida,puntos:x.puntos||0})));if(res.error)throw res.error;}
+    res=await db.from('est_puntos_mult').delete().neq('cantidad',-999999);if(res.error)throw res.error;
+    const multV=cfgMultRows.filter(x=>x.cantidad>0);
+    if(multV.length){res=await db.from('est_puntos_mult').insert(multV.map(x=>({cantidad:x.cantidad,mult:x.mult||1})));if(res.error)throw res.error;}
     await loadPuntos();
-    $('#cfgMsg').textContent='✓ Guardado. Aplica a la producción nueva.';
-  }catch(e){console.error('cfgSave',e);$('#cfgMsg').style.color='#C24A3C';$('#cfgMsg').textContent='⚠ No se pudo guardar';}
+    $('#cfgMsg').style.color='#166534';$('#cfgMsg').textContent='✓ Guardado. Aplica a la producción nueva.';
+  }catch(e){console.error('cfgSave',e);$('#cfgMsg').style.color='#C24A3C';$('#cfgMsg').textContent='⚠ No se pudo guardar: '+(e.message||e.code||'error. ¿Corriste el SQL?');}
 };
 
 /* ── Puntos de producción (calibración · tabla editable en Supabase) ── */
@@ -1298,9 +1298,9 @@ let PUNTOS_TABLA={},PUNTOS_MULT=[];
 async function loadPuntos(){
   if(!db)return;
   try{
-    const {data:pt}=await db.from('est_puntos').select('*');PUNTOS_TABLA={};(pt||[]).forEach(r=>{const p=Number(r.puntos);PUNTOS_TABLA[r.material+'|'+normMed(r.medida)]=p;const dk=r.material+'|'+dimMed(r.medida);if(PUNTOS_TABLA[dk]==null)PUNTOS_TABLA[dk]=p;});
-    const {data:mt}=await db.from('est_puntos_mult').select('*').order('cantidad',{ascending:true});PUNTOS_MULT=(mt||[]).map(r=>[Number(r.cantidad),Number(r.mult)]);
-  }catch(e){console.error('loadPuntos',e);}
+    const {data:pt,error:e1}=await db.from('est_puntos').select('*');if(e1)throw e1;PUNTOS_TABLA={};(pt||[]).forEach(r=>{const p=Number(r.puntos);PUNTOS_TABLA[r.material+'|'+normMed(r.medida)]=p;const dk=r.material+'|'+dimMed(r.medida);if(PUNTOS_TABLA[dk]==null)PUNTOS_TABLA[dk]=p;});
+    const {data:mt,error:e2}=await db.from('est_puntos_mult').select('*').order('cantidad',{ascending:true});if(e2)throw e2;PUNTOS_MULT=(mt||[]).map(r=>[Number(r.cantidad),Number(r.mult)]);
+  }catch(e){console.error('loadPuntos — ¿faltan las tablas est_puntos/est_puntos_mult? correr el SQL:',e);}
 }
 function multCantidad(q){
   const A=PUNTOS_MULT;if(!A.length)return 1;
