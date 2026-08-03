@@ -1308,7 +1308,7 @@ function multCantidad(q){
   for(let i=0;i<A.length-1;i++){if(q<=A[i+1][0]){const x0=A[i][0],y0=A[i][1],x1=A[i+1][0],y1=A[i+1][1];return y0+(y1-y0)*(q-x0)/(x1-x0);}}
   const n=A.length,x0=A[n-2][0],y0=A[n-2][1],x1=A[n-1][0],y1=A[n-1][1],slope=(y1-y0)/(x1-x0);return y1+slope*(q-x1);
 }
-function puntosLinea(prod,medida,cantidad){const t=PUNTOS_TABLA;let base=t[prod+'|'+normMed(medida)];if(base==null)base=t[prod+'|'+dimMed(medida)];if(base==null)return 0;return base*multCantidad(cantidad||0);}
+function puntosLinea(prod,medida,cantidad,colores){const t=PUNTOS_TABLA;let base=t[prod+'|'+normMed(medida)];if(base==null)base=t[prod+'|'+dimMed(medida)];if(base==null)return 0;const cols=(Number(colores)===2)?2:1;return base*multCantidad(cantidad||0)*cols;}
 function puntosDe(p){const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(l.puntos!=null?Number(l.puntos):0),0);}
 function redondearObj(o){const r={};for(const k in o)r[k]=Math.round(o[k]);return r;}
 let puntPeriodo='mes';
@@ -1490,7 +1490,7 @@ async function savePedido(ped){
   if(!db)return;
   const pedId=uuid();ped.id=pedId;
   await dbInsert('est_pedidos',{id:pedId,numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso',impresiones:ped.impresionesHoy||0});
-  const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:pedId,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0)}));
+  const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:pedId,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0,l.colores)}));
   if(rows.length)await dbInsert('est_lineas',rows);
   upsertOrden(ped);
 }
