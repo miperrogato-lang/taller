@@ -279,6 +279,13 @@
   .liqperbtn:active{transform:scale(.99)}
   /* jerarquía Inter: botones → Medium 500 */
   .hero-btn,.histbtn,.contbtn,.liqperbtn,.adexit,.back,.btn,.tabs button,.key,.pinkey,.addrow,.chg,.shareTog,.esp-toggle,.feradd button,.buscarbtn{font-weight:500}
+  /* producción semanal (home · secundario respecto a Hoy) */
+  .home-week{margin-top:16px}
+  .home-week .hw-ttl{font-size:12px;font-weight:600;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px 2px}
+  .home-week .hw-stats{display:flex;gap:10px}
+  .home-week .hw{flex:1;background:transparent;border:1px dashed var(--line2);border-radius:12px;padding:11px 8px;text-align:center}
+  .home-week .hw .v{font-size:18px;font-weight:600;color:var(--gray)}
+  .home-week .hw .k{font-size:10.5px;color:var(--gray);font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
 </style>
 </head>
 <body>
@@ -302,6 +309,14 @@
         <button class="st stbtn" id="pedHoyBtn"><div class="v num" id="hPed">0</div><div class="k">Pedidos hoy ›</div></button>
         <div class="st"><div class="v num" id="hBol">0</div><div class="k">Bolsas</div></div>
         <div class="st"><div class="v num" id="hImp">0</div><div class="k">Impresiones</div></div>
+      </div>
+      <div class="home-week">
+        <div class="hw-ttl">📈 Producción semanal</div>
+        <div class="hw-stats">
+          <div class="hw"><div class="v num" id="hPedSem">0</div><div class="k">Pedidos</div></div>
+          <div class="hw"><div class="v num" id="hBolSem">0</div><div class="k">Bolsas</div></div>
+          <div class="hw"><div class="v num" id="hImpSem">0</div><div class="k">Impresiones</div></div>
+        </div>
       </div>
     </div>
 
@@ -698,7 +713,7 @@ function refreshHome(){
   sesion.pedidos.forEach(p=>{imp+=impresionesDe(p);p.lineas.forEach(l=>{bol+=l.qty;});});
   $('#hPed').textContent=sesion.pedidos.length;
   $('#hBol').textContent=bol.toLocaleString('es-AR');
-  $('#hImp').textContent=imp.toLocaleString('es-AR');
+  $('#hImp').textContent=imp.toLocaleString('es-AR');refreshSemana();
   refreshFich();
 }
 $('#startBtn').onclick=()=>{cur={operario:null,numero:null,compartido:false,previas:[],lineas:[]};buildWho();show('scWho');};
@@ -1494,7 +1509,27 @@ async function upsertOrden(ped){
     else await db.from('est_ordenes').insert({numero,total_bolsas,total_colores,estado});
   }catch(e){console.error('upsertOrden',e);}
 }
-async function saveFichaje(operario,tipo,hora){if(!db)return;await dbInsert('est_fichajes',{id:uuid(),operario,tipo,hora});}
+/* ── producción semanal (home · discreto) ── */
+async function refreshSemana(){
+  if(!db)return;
+  const now=new Date();const off=(now.getDay()+6)%7;
+  const start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-off).toISOString();
+  const r=agregarPedidos(await fetchPedidosRango(start,null));
+  const set=(id,v)=>{const el=$('#'+id);if(el)el.textContent=v;};
+  set('hPedSem',r.pedidos);set('hBolSem',r.bolsas.toLocaleString('es-AR'));set('hImpSem',r.impresiones.toLocaleString('es-AR'));
+}
+/* ── feedback sonoro + háptico de fichada (UX · sin librerías ni archivos) ── */
+let _actx=null;
+function _ac(){if(!_actx){try{_actx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}if(_actx&&_actx.state==='suspended')_actx.resume();return _actx;}
+document.addEventListener('pointerdown',()=>{_ac();},{passive:true});
+function _beep(seq){const ac=_ac();if(!ac)return;let t=ac.currentTime;seq.forEach(n=>{const o=ac.createOscillator(),g=ac.createGain();o.type=n.type||'sine';o.frequency.value=n.f;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(n.v||0.22,t+0.012);g.gain.exponentialRampToValueAtTime(0.0001,t+n.d);o.start(t);o.stop(t+n.d+0.03);t+=n.d;});}
+function fichOk(){_beep([{f:880,d:0.09},{f:1318.5,d:0.15}]);try{if(navigator.vibrate)navigator.vibrate(60);}catch(e){}}
+function fichErr(){_beep([{f:311,d:0.16,type:'square',v:0.18},{f:220,d:0.24,type:'square',v:0.18}]);}
+async function saveFichaje(operario,tipo,hora){
+  if(!db){fichErr();return;}
+  try{await dbInsert('est_fichajes',{id:uuid(),operario,tipo,hora});fichOk();}
+  catch(e){console.error('saveFichaje',e);fichErr();}
+}
 async function loadData(){
   if(!db)return;
   try{
