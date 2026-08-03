@@ -1292,11 +1292,13 @@ $('#cfgSave').onclick=async()=>{
 };
 
 /* ── Puntos de producción (calibración · tabla editable en Supabase) ── */
+function normMed(s){return String(s==null?'':s).toLowerCase().replace(/[×✕]/g,'x').replace(/\s+/g,'').trim();}
+function dimMed(s){const m=normMed(s).match(/\d+x\d+/);return m?m[0]:normMed(s);}
 let PUNTOS_TABLA={},PUNTOS_MULT=[];
 async function loadPuntos(){
   if(!db)return;
   try{
-    const {data:pt}=await db.from('est_puntos').select('*');PUNTOS_TABLA={};(pt||[]).forEach(r=>{PUNTOS_TABLA[r.material+'|'+r.medida]=Number(r.puntos);});
+    const {data:pt}=await db.from('est_puntos').select('*');PUNTOS_TABLA={};(pt||[]).forEach(r=>{const p=Number(r.puntos);PUNTOS_TABLA[r.material+'|'+normMed(r.medida)]=p;const dk=r.material+'|'+dimMed(r.medida);if(PUNTOS_TABLA[dk]==null)PUNTOS_TABLA[dk]=p;});
     const {data:mt}=await db.from('est_puntos_mult').select('*').order('cantidad',{ascending:true});PUNTOS_MULT=(mt||[]).map(r=>[Number(r.cantidad),Number(r.mult)]);
   }catch(e){console.error('loadPuntos',e);}
 }
@@ -1306,7 +1308,7 @@ function multCantidad(q){
   for(let i=0;i<A.length-1;i++){if(q<=A[i+1][0]){const x0=A[i][0],y0=A[i][1],x1=A[i+1][0],y1=A[i+1][1];return y0+(y1-y0)*(q-x0)/(x1-x0);}}
   const n=A.length,x0=A[n-2][0],y0=A[n-2][1],x1=A[n-1][0],y1=A[n-1][1],slope=(y1-y0)/(x1-x0);return y1+slope*(q-x1);
 }
-function puntosLinea(prod,medida,cantidad){const base=PUNTOS_TABLA[prod+'|'+medida];if(base==null)return 0;return base*multCantidad(cantidad||0);}
+function puntosLinea(prod,medida,cantidad){const t=PUNTOS_TABLA;let base=t[prod+'|'+normMed(medida)];if(base==null)base=t[prod+'|'+dimMed(medida)];if(base==null)return 0;return base*multCantidad(cantidad||0);}
 function puntosDe(p){const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(l.puntos!=null?Number(l.puntos):0),0);}
 function redondearObj(o){const r={};for(const k in o)r[k]=Math.round(o[k]);return r;}
 let puntPeriodo='mes';
