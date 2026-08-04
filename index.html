@@ -286,6 +286,7 @@
   .home-week .hw{flex:1;background:transparent;border:1px dashed var(--line2);border-radius:12px;padding:11px 8px;text-align:center}
   .home-week .hw .v{font-size:18px;font-weight:600;color:var(--gray)}
   .home-week .hw .k{font-size:10.5px;color:var(--gray);font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+  .bcard{cursor:pointer}
 </style>
 </head>
 <body>
@@ -415,7 +416,7 @@
       <div class="adcard"><div class="adh">Operarios del día</div><div class="adbd"><div id="jorOps" class="prezwrap"></div></div></div>
       <div class="adcard"><div class="adh">Por tipo de bolsa</div><div class="adbd" id="jorTipo"></div></div>
       <div class="adcard"><div class="adh">Producción por operario</div><div class="adbd" id="jorPorOp"></div></div>
-      <div class="adcard"><div class="adh">Pedidos del día</div><div class="adbd" id="jorPedidos"></div></div>
+      <div class="adcard"><div class="adh">Pedidos del día<small>tocá uno para editar</small></div><div class="adbd" id="jorPedidos"></div></div>
     </div>
 
     <!-- ANALÍTICA -->
@@ -554,6 +555,10 @@
 
     <!-- ARMAR -->
     <div class="screen" id="scBuild">
+      <div id="editBanner" style="display:none;align-items:center;gap:10px;background:#FFF7E0;border:1px solid var(--amber);border-radius:12px;padding:10px 12px;margin-bottom:12px">
+        <span id="editBannerTxt" style="font-weight:600;font-size:14px;flex:1">✏️ Editando pedido</span>
+        <button id="editDel" style="border:none;background:#FDEDEB;color:#C24A3C;font-weight:600;font-size:13px;padding:8px 12px;border-radius:9px;cursor:pointer">🗑 Eliminar</button>
+      </div>
       <div class="who"><span>👤</span><span class="n" id="whoName">—</span><button class="chg" id="chgWho">cambiar</button></div>
 
       <button class="pedidoField empty" id="pedidoBtn">
@@ -733,7 +738,7 @@ function pick(n){cur.operario=n;$('#whoName').textContent=n;startBuild();}
 
 /* ── armar ── */
 function newDraft(){draft={prod:null,med:null,bolsa:null,tinta:null,tinta2:null,tipo:null,caras:1,colores:1,qty:null};}
-function startBuild(){newDraft();$('#lineBuilder').style.display=cur.numero?'block':'none';setPedidoField();renderPrevias();renderOptions();renderCart();show('scBuild');}
+function startBuild(){editId=null;$('#chgWho').style.display='';{const eb=$('#editBanner');if(eb)eb.style.display='none';}newDraft();$('#lineBuilder').style.display=cur.numero?'block':'none';setPedidoField();renderPrevias();renderOptions();renderCart();show('scBuild');}
 $('#chgWho').onclick=()=>{buildWho();show('scWho');};
 
 function setPedidoField(){
@@ -859,7 +864,7 @@ function renderConfirm(){
   $('#impInfo').textContent=`Esperadas ${esperadas.toLocaleString('es-AR')} · ya hechas ${realiz.toLocaleString('es-AR')} · pendientes ${pend.toLocaleString('es-AR')}`;
 }
 $('#btnBack').onclick=()=>show('scBuild',false);
-$('#btnConfirm').onclick=()=>{const ped=cur;sesion.pedidos.push(ped);refreshHome();toastMsg('✓ Pedido confirmado');cur=null;draft=null;scStack.length=0;scStack.push('scHome');show('scHome',false);savePedido(ped);};
+$('#btnConfirm').onclick=async()=>{const ped=cur;if(editId){const ok=await actualizarPedido(ped);const idx=sesion.pedidos.findIndex(x=>x.id===editId);if(idx>=0)sesion.pedidos[idx]=ped;const n=ped.numero;_salirEdicion();toastMsg(ok?'✓ Pedido #'+n+' actualizado':'⚠ Revisá la conexión');}else{sesion.pedidos.push(ped);refreshHome();toastMsg('✓ Pedido confirmado');cur=null;draft=null;scStack.length=0;scStack.push('scHome');show('scHome',false);savePedido(ped);}};
 
 /* ── trabajos del día ── */
 $('#pedHoyBtn').onclick=()=>{buildPedidos();show('scPedidos');};
@@ -928,13 +933,14 @@ function renderAdmin(){
   $('#adTipoBolsa').innerHTML=rankBars(tb);$('#adBolsa').innerHTML=rankBars(bc,BOLSA_SW);$('#adTinta').innerHTML=rankBars(tc,TINTA_SW);
   $('#adPresentes').innerHTML=EQUIPO.map(n=>{const f=fichajes[n];const inn=f&&f.estado==='adentro';return `<div class="prez${inn?' in':''}">${n}${inn?`<small>${f.desde}</small>`:''}</div>`;}).join('');
   renderHoras();renderFeriados();
-  const pr=sesion.pedidos.map((p,i)=>{const tot=p.lineas.reduce((a,l)=>a+l.qty,0);return `<div class="adped"><div class="adpedinfo"><b>#${p.numero}</b> · ${p.operario}${p.compartido?' · compartido':''}<small>${tot.toLocaleString('es-AR')} bolsas</small></div><button class="adpeddel" data-i="${i}">✕</button></div>`;});
+  const pr=sesion.pedidos.map((p,i)=>{const tot=p.lineas.reduce((a,l)=>a+l.qty,0);return `<div class="adped"><div class="adpedinfo" data-i="${i}" style="cursor:pointer"><b>#${p.numero}</b> · ${p.operario}${p.compartido?' · compartido':''}<small>${tot.toLocaleString('es-AR')} bolsas · tocá para editar</small></div><button class="adpeddel" data-i="${i}">✕</button></div>`;});
   $('#adPedidos').innerHTML=pr.length?pr.reverse().join(''):'<div class="admuted">Sin pedidos cargados.</div>';
+  $('#adPedidos').querySelectorAll('.adpedinfo').forEach(el=>el.onclick=()=>editarPedido(sesion.pedidos[+el.dataset.i]));
   $('#adPedidos').querySelectorAll('.adpeddel').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;const p=sesion.pedidos[i];if(p&&confirm('¿Borrar el pedido #'+p.numero+'? No se puede deshacer.'))deletePedido(i);});
 }
 async function deletePedido(i){
   const p=sesion.pedidos[i];if(!p)return;
-  if(db&&p.id){try{const {error}=await db.from('est_pedidos').delete().eq('id',p.id);if(error)throw error;}catch(err){console.error('deletePedido',err);toastMsg('⚠ No se pudo borrar en la nube');}}
+  if(db&&p.id){try{await db.from('est_lineas').delete().eq('pedido_id',p.id);const {error}=await db.from('est_pedidos').delete().eq('id',p.id);if(error)throw error;auditar('pedido',p.id,'eliminar',{numero:String(p.numero)});}catch(err){console.error('deletePedido',err);toastMsg('⚠ No se pudo borrar en la nube');}}
   sesion.pedidos.splice(i,1);refreshHome();renderAdmin();
 }
 
@@ -949,11 +955,13 @@ async function buscarPedido(n){
     const {data,error}=await db.from('est_pedidos').select('*, est_lineas(*)').eq('numero',String(n)).order('created_at',{ascending:true});
     if(error)throw error;
     if(!data||!data.length){R.innerHTML='<div class="admuted" style="padding:16px">No se encontró el pedido #'+n+'.</div>';return;}
-    R.innerHTML=data.map(p=>{
+    buscarCache=data;
+    R.innerHTML=data.map((p,idx)=>{
       const dt=new Date(p.created_at);const fh=dt.toLocaleDateString('es-AR')+' · '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
       const lin=(p.est_lineas||[]).map(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;return `<div class="bline"><b>${(l.cantidad||0).toLocaleString('es-AR')}</b> ${nm} ${l.medida}<small>bolsa ${l.color_bolsa||'—'} · ${cols||'—'} · ${l.tipo_tinta||'—'} · ${l.caras}c/${l.colores}col</small></div>`;}).join('');
       return `<div class="bcard"><div class="bch"><span><b>#${p.numero}</b>${p.compartido?' · compartido':''}</span><span>${fh} · ${p.operario}</span></div>${lin}</div>`;
     }).join('');
+    R.querySelectorAll('.bcard').forEach((c,i2)=>c.onclick=()=>editarPedido(buscarCache[i2]));
   }catch(err){console.error('buscar',err);R.innerHTML='<div class="admuted" style="padding:16px">Error al buscar.</div>';}
 }
 
@@ -1004,6 +1012,7 @@ function openJornada(dia){
   $('#jorPorOp').innerHTML=rankBars(r.porOperario);
   const _pts=pedidos.reduce((a,p)=>a+puntosDe(p),0);const _je=$('#jorPuntos');if(_je)_je.innerHTML='🧪 Puntos del día: <b>'+Math.round(_pts).toLocaleString('es-AR')+'</b> <small>· calibración</small>';
   $('#jorPedidos').innerHTML=pedidos.length?pedidos.map(p=>{const dt=new Date(p.created_at);const fh=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');const lin=(p.est_lineas||[]).map(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;return `<div class="bline"><b>${(l.cantidad||0).toLocaleString('es-AR')}</b> ${nm} ${l.medida}<small>bolsa ${l.color_bolsa||'—'} · ${cols||'—'} · ${l.tipo_tinta||'—'}</small></div>`;}).join('');return `<div class="bcard"><div class="bch"><span><b>#${p.numero}</b>${p.compartido?' · compartido':''}</span><span>${fh} · ${p.operario}</span></div>${lin}</div>`;}).join(''):'<div class="admuted">Sin pedidos.</div>';
+  $('#jorPedidos').querySelectorAll('.bcard').forEach((c,i2)=>c.onclick=()=>editarPedido(jorActual.pedidos[i2]));
   show('scJornada');
 }
 
@@ -1513,6 +1522,55 @@ async function upsertOrden(ped){
     else await db.from('est_ordenes').insert({numero,total_bolsas,total_colores,estado});
   }catch(e){console.error('upsertOrden',e);}
 }
+/* ── Edición de pedidos (reusa el armador · UPDATE del mismo pedido · auditoría) ── */
+let editId=null,buscarCache=[];
+async function auditar(entidad,entidad_id,accion,detalle){
+  try{await dbInsert('auditoria',{id:uuid(),entidad,entidad_id:String(entidad_id),accion,detalle,usuario:adminWho||'admin'});}
+  catch(e){console.error('auditar',e);}
+}
+function _lineaBuilder(l){return ('prod' in l)
+  ?{prod:l.prod,med:l.med,bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo,caras:l.caras||1,colores:l.colores||1,qty:l.qty}
+  :{prod:l.producto,med:l.medida,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras||1,colores:l.colores||1,qty:l.cantidad};}
+function pedToCur(p){return {id:p.id,numero:String(p.numero),operario:p.operario,compartido:!!p.compartido,previas:[],realizadasPrevias:0,lineas:(p.lineas||p.est_lineas||[]).map(_lineaBuilder)};}
+function editarPedido(p){
+  if(!p||!p.id){toastMsg('No puedo abrir ese pedido');return;}
+  cur=pedToCur(p);editId=p.id;draft=null;contOrd=null;
+  $('#whoName').textContent=cur.operario;$('#chgWho').style.display='none';
+  const eb=$('#editBanner');if(eb){eb.style.display='flex';$('#editBannerTxt').textContent='✏️ Editando pedido #'+cur.numero;}
+  newDraft();$('#lineBuilder').style.display='block';setPedidoField();renderPrevias();renderOptions();renderCart();
+  show('scBuild');
+}
+async function actualizarPedido(ped){
+  if(!db||!ped.id){toastMsg('Sin conexión');return false;}
+  try{
+    const imp=(ped.lineas||[]).reduce((a,l)=>a+impDeLinea(l),0);
+    const {data:old,error:eo}=await db.from('est_lineas').select('id').eq('pedido_id',ped.id);if(eo)throw eo;
+    const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:ped.id,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0,l.colores)}));
+    if(rows.length){const r=await db.from('est_lineas').insert(rows);if(r.error)throw r.error;}
+    const oldIds=(old||[]).map(o=>o.id);
+    if(oldIds.length){const r=await db.from('est_lineas').delete().in('id',oldIds);if(r.error)throw r.error;}
+    const r2=await db.from('est_pedidos').update({numero:String(ped.numero),compartido:!!ped.compartido,impresiones:imp}).eq('id',ped.id);if(r2.error)throw r2.error;
+    auditar('pedido',ped.id,'modificar',{numero:String(ped.numero),lineas:ped.lineas.length,impresiones:imp});
+    upsertOrden(ped);
+    return true;
+  }catch(e){console.error('actualizarPedido',e);toastMsg('⚠ No se pudo guardar la edición: '+(e.message||e.code||''));return false;}
+}
+async function borrarPedidoId(id,numero){
+  if(!db||!id){toastMsg('Sin conexión');return false;}
+  try{
+    let r=await db.from('est_lineas').delete().eq('pedido_id',id);if(r.error)throw r.error;
+    r=await db.from('est_pedidos').delete().eq('id',id);if(r.error)throw r.error;
+    auditar('pedido',id,'eliminar',{numero:String(numero)});
+    const idx=sesion.pedidos.findIndex(x=>x.id===id);if(idx>=0)sesion.pedidos.splice(idx,1);
+    return true;
+  }catch(e){console.error('borrarPedidoId',e);toastMsg('⚠ No se pudo borrar: '+(e.message||e.code||''));return false;}
+}
+function _salirEdicion(){editId=null;cur=null;draft=null;$('#chgWho').style.display='';const eb=$('#editBanner');if(eb)eb.style.display='none';refreshHome();if(document.getElementById('scAdmin').classList.contains('on'))renderAdmin();scStack.length=0;scStack.push('scHome');show('scHome',false);}
+$('#editDel').onclick=async()=>{
+  if(!cur||!editId)return;
+  if(!confirm('¿Eliminar el pedido #'+cur.numero+' completo? No se puede deshacer.'))return;
+  const ok=await borrarPedidoId(editId,cur.numero);const n=cur.numero;_salirEdicion();toastMsg(ok?'✓ Pedido #'+n+' eliminado':'⚠ No se pudo eliminar');
+};
 /* ── producción semanal (home · discreto) ── */
 async function refreshSemana(){
   if(!db)return;
