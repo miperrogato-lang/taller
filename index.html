@@ -605,8 +605,8 @@
         <div id="confList"></div>
       </div>
       <div class="impbox">
-        <div class="implbl">Impresiones realizadas hoy</div>
-        <button class="impfield num" id="impField">0</button>
+        <div class="implbl">Impresiones (cantidad × caras × colores)</div>
+        <div class="impfield num" id="impField">0</div>
         <div class="impinfo" id="impInfo"></div>
       </div>
       <div class="actions">
@@ -854,11 +854,10 @@ function renderConfirm(){
   if(contOrd){esperadas=(contOrd.total_bolsas||0)*(contOrd.total_colores||1);}
   else{esperadas=cur.lineas.reduce((a,l)=>a+l.qty*(l.colores||1),0);}
   const realiz=cur.realizadasPrevias||0;const pend=Math.max(0,esperadas-realiz);
-  if(cur.impresionesHoy==null)cur.impresionesHoy=Math.min(cargaBolsas,pend>0?pend:cargaBolsas);
-  $('#impField').textContent=cur.impresionesHoy.toLocaleString('es-AR');
+  const impCarga=cur.lineas.reduce((a,l)=>a+impDeLinea(l),0);
+  $('#impField').textContent=impCarga.toLocaleString('es-AR');
   $('#impInfo').textContent=`Esperadas ${esperadas.toLocaleString('es-AR')} · ya hechas ${realiz.toLocaleString('es-AR')} · pendientes ${pend.toLocaleString('es-AR')}`;
 }
-$('#impField').onclick=()=>openPad('Impresiones realizadas hoy',cur.impresionesHoy||0,v=>{cur.impresionesHoy=Math.max(0,v||0);renderConfirm();});
 $('#btnBack').onclick=()=>show('scBuild',false);
 $('#btnConfirm').onclick=()=>{const ped=cur;sesion.pedidos.push(ped);refreshHome();toastMsg('✓ Pedido confirmado');cur=null;draft=null;scStack.length=0;scStack.push('scHome');show('scHome',false);savePedido(ped);};
 
@@ -1058,7 +1057,7 @@ const ReportService={
   async modelo(fechaObj,pedidos){
     const a=analizarPedidos(pedidos);
     const opsBol={},opsImp={};
-    (pedidos||[]).forEach(p=>(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;opsBol[p.operario]=(opsBol[p.operario]||0)+q;opsImp[p.operario]=(opsImp[p.operario]||0)+q*(l.caras||1)*(l.colores||1);}));
+    (pedidos||[]).forEach(p=>(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;opsBol[p.operario]=(opsBol[p.operario]||0)+q;opsImp[p.operario]=(opsImp[p.operario]||0)+impDeLinea(l);}));
     const iso=fechaObj.getFullYear()+'-'+String(fechaObj.getMonth()+1).padStart(2,'0')+'-'+String(fechaObj.getDate()).padStart(2,'0');
     let personal=[],hN=0,hE=0,presentes=[];
     if(db){try{
@@ -1489,13 +1488,16 @@ function toastMsg(txt){const t=$('#toast');t.textContent=txt;t.classList.add('on
 async function savePedido(ped){
   if(!db)return;
   const pedId=uuid();ped.id=pedId;
-  await dbInsert('est_pedidos',{id:pedId,numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso',impresiones:ped.impresionesHoy||0});
+  await dbInsert('est_pedidos',{id:pedId,numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso',impresiones:(ped.lineas||[]).reduce((a,l)=>a+impDeLinea(l),0)});
   const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:pedId,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0,l.colores)}));
   if(rows.length)await dbInsert('est_lineas',rows);
   upsertOrden(ped);
 }
-function impCargaRaw(c){const li=(c.est_lineas||[]).reduce((a,l)=>a+((l.cantidad)||0)*((l.caras)||1)*((l.colores)||1),0);return (c.impresiones&&c.impresiones>0)?c.impresiones:li;}
-function impresionesDe(p){if(p.impresiones&&p.impresiones>0)return p.impresiones;const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(((l.cantidad??l.qty)||0)*((l.caras)||1)*((l.colores)||1)),0);}
+function impDeLinea(l){return (((l.cantidad??l.qty)||0))*((l.caras)||1)*((l.colores)||1);}
+/* Fuente ÚNICA de verdad: impresiones = cantidad × caras × colores (se calcula, nunca se ingresa) */
+function impresionesDe(p){const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+impDeLinea(l),0);}
+/* Unidades para el PROGRESO de la orden: cantidad × colores (sin caras), para quedar alineado con esperadas=total_bolsas×total_colores */
+function impCargaRaw(c){return (c.est_lineas||[]).reduce((a,l)=>a+(((l.cantidad)||0)*((l.colores)||1)),0);}
 async function upsertOrden(ped){
   try{
     const numero=String(ped.numero);
