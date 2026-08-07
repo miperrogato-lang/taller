@@ -253,7 +253,7 @@
 
   .ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;z-index:50}
   .ov.on{display:flex}
-  .pad{width:100%;max-width:520px;background:var(--surf);border-radius:22px 22px 0 0;padding:20px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.2)}
+  .pad{width:100%;max-width:520px;max-height:92vh;overflow-y:auto;background:var(--surf);border-radius:22px 22px 0 0;padding:20px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.2)}
   .pad .kh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .pad .kh .lbl{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);font-weight:800}
   .pad .kh .close{border:none;background:none;font-size:24px;color:var(--gray);cursor:pointer}
@@ -302,6 +302,19 @@
   .aviact{display:flex;gap:8px;margin-top:11px}
   .aviact button{font-family:inherit;font-weight:700;font-size:13px;padding:8px 13px;border-radius:9px;cursor:pointer;border:1px solid var(--line2);background:var(--surf);color:var(--ink)}
   .aviact .avidel{color:#DC2626;border-color:#F0C9C9}
+
+  /* ── Editor de bloques horarios (corrección de jornada) ── */
+  .corblk{border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin-bottom:9px;background:var(--bg)}
+  .corblk-n{font-size:12px;font-weight:800;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px}
+  .corblk-t{display:flex;gap:9px}
+  .corblk-t>div{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}
+  .corblk-t span{font-size:11px;font-weight:700;color:var(--gray)}
+  .corblk-t input{width:100%;padding:11px;border:1px solid var(--line2);border-radius:9px;font-family:inherit;font-size:17px;background:var(--surf);color:var(--ink);box-sizing:border-box}
+  .corblk-a{display:flex;gap:7px;margin-top:9px;justify-content:flex-end}
+  .corblk-a button{border:1px solid var(--line2);background:var(--surf);border-radius:8px;font-size:15px;font-weight:700;padding:6px 13px;cursor:pointer;color:var(--ink);font-family:inherit}
+  .corblk-a button:disabled{opacity:.35}
+  .corblk-a .cordel{color:#DC2626;border-color:#F0C9C9}
+  .cortotal{margin-top:10px;font-size:15px;font-weight:800;text-align:center;padding:11px;background:#EAF7F0;border-radius:10px;color:#0F7A4F}
 </style>
 </head>
 <body>
@@ -639,14 +652,14 @@
 </div></div>
 
 <div class="ov" id="ovCorregir"><div class="pad">
-  <div class="kh"><span class="lbl">✏️ Corregir fichada</span><button class="close" id="corClose">✕</button></div>
+  <div class="kh"><span class="lbl">✏️ Corregir jornada</span><button class="close" id="corClose">✕</button></div>
   <div id="corInfo" class="corinfo"></div>
-  <label class="hlbl">Hora de entrada</label>
-  <input type="time" id="corEntrada" class="hsel">
-  <label class="hlbl">Hora de salida</label>
-  <input type="time" id="corSalida" class="hsel">
-  <label class="hlbl">Motivo (obligatorio)</label>
-  <input type="text" id="corMotivo" class="hsel" placeholder="Ej: olvidó fichar la salida">
+  <label class="hlbl">Bloques de trabajo</label>
+  <div id="corBloques"></div>
+  <button class="addrow" id="corAdd">+ Agregar bloque</button>
+  <div id="corTotal" class="cortotal"></div>
+  <label class="hlbl" style="margin-top:12px">Motivo (obligatorio)</label>
+  <input type="text" id="corMotivo" class="hsel" placeholder="Ej: corte de luz, no pudieron fichar el regreso">
   <button class="contbtn primary" id="corGuardar" style="margin-top:12px">Guardar corrección</button>
   <div id="corHist"></div>
 </div></div>
@@ -1133,7 +1146,7 @@ $('#repPdf').onclick=()=>generarReporte('pdf');
 $('#repExcel').onclick=()=>generarReporte('excel');
 
 /* ── Horas del Personal (solo lectura · reutiliza fichajes) ── */
-function workedMinClosed(eventos){let total=0,open=null;(eventos||[]).forEach(e=>{if(e.tipo==='entrada')open=toMinHM(e.hhmm);else if(e.tipo==='salida'&&open!=null){total+=toMinHM(e.hhmm)-open;open=null;}});return Math.max(0,total);}
+function workedMinClosed(eventos){const evs=(eventos||[]).slice().sort((a,b)=>String(a.hhmm).localeCompare(String(b.hhmm)));let total=0,open=null;evs.forEach(e=>{if(e.tipo==='entrada')open=toMinHM(e.hhmm);else if(e.tipo==='salida'&&open!=null){total+=toMinHM(e.hhmm)-open;open=null;}});return Math.max(0,total);}
 const HorasService={
   hm(min){return Math.floor(min/60)+'h '+String(Math.round(min%60)).padStart(2,'0')+'m';},
   hdec(min){return Math.round(min/60*100)/100;},
@@ -1153,7 +1166,7 @@ const HorasService={
         const estado=entradaRow&&salidaRow?'completo':(entradaRow?'falta_salida':(salidaRow?'falta_entrada':'sin'));
         const dt=new Date(fecha+'T12:00:00');const dow=dt.getDay();const allExtra=(dow===0||dow===6||isFeriado(dt));
         let norm=0,ext=0;if(w>0){if(allExtra){ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}}
-        (ops[op]=ops[op]||{dias:[],tN:0,tE:0,dT:0}).dias.push({fecha,worked:w,normal:norm,extra:ext,tipo:allExtra?((dow===0||dow===6)?'fin de semana':'feriado'):'normal',estado,entradaId:entradaRow?entradaRow.id:null,entradaHora:entradaRow?entradaRow.hora:'',salidaId:salidaRow?salidaRow.id:null,salidaHora:salidaRow?salidaRow.hora:''});
+        (ops[op]=ops[op]||{dias:[],tN:0,tE:0,dT:0}).dias.push({fecha,worked:w,normal:norm,extra:ext,tipo:allExtra?((dow===0||dow===6)?'fin de semana':'feriado'):'normal',estado,entradaId:entradaRow?entradaRow.id:null,entradaHora:entradaRow?entradaRow.hora:'',salidaId:salidaRow?salidaRow.id:null,salidaHora:salidaRow?salidaRow.hora:'',eventos:rows.map(r=>({id:r.id,tipo:r.tipo,hora:r.hora}))});
         ops[op].tN+=norm;ops[op].tE+=ext;if(w>0)ops[op].dT++;});
       res.empleados=Object.entries(ops).map(([op,v])=>({empleado:op,dias:v.dias.sort((a,b)=>a.fecha<b.fecha?-1:1),totNormal:v.tN,totExtra:v.tE,diasTrab:v.dT,totMin:v.tN+v.tE})).sort((a,b)=>a.empleado.localeCompare(b.empleado));
     }catch(e){console.error('HorasService',e);}
@@ -1209,36 +1222,73 @@ $('#horPdf').onclick=()=>{if(horModelo&&horModelo.empleados.length)HorasService.
 $('#horExcel').onclick=()=>{if(horModelo&&horModelo.empleados.length)HorasService.excel(horModelo);};
 
 /* ── Corrección manual de fichadas (admin · con auditoría) ── */
-let corCtx=null;
+let corCtx=null,corBloques=[];
+function corMin(hhmm){if(!hhmm)return null;const p=String(hhmm).split(':');return (+p[0])*60+(+p[1]);}
+function eventosABloques(evs){
+  const ev=(evs||[]).slice().sort((a,b)=>String(a.hora).localeCompare(String(b.hora)));
+  const bloques=[];let open=null;
+  ev.forEach(e=>{if(e.tipo==='entrada'){if(open)bloques.push(open);open={entrada:e.hora||'',salida:''};}
+    else{if(open){open.salida=e.hora||'';bloques.push(open);open=null;}else bloques.push({entrada:'',salida:e.hora||''});}});
+  if(open)bloques.push(open);
+  return bloques;
+}
 function abrirCorregir(op,d){
-  corCtx={op,fecha:d.fecha,entradaId:d.entradaId,entradaHora:d.entradaHora,salidaId:d.salidaId,salidaHora:d.salidaHora};
+  corCtx={op,fecha:d.fecha,eventos:(d.eventos||[]).map(e=>({id:e.id,tipo:e.tipo,hora:e.hora}))};
+  corBloques=eventosABloques(corCtx.eventos);
+  if(!corBloques.length)corBloques=[{entrada:'',salida:''}];
   $('#corInfo').innerHTML=`${op} · ${d.fecha}`;
-  $('#corEntrada').value=d.entradaHora||'';$('#corSalida').value=d.salidaHora||'';$('#corMotivo').value='';$('#corHist').innerHTML='';
+  $('#corMotivo').value='';$('#corHist').innerHTML='';
+  renderCorBloques();
   $('#ovCorregir').classList.add('on');
   cargarHistCorreccion(op,d.fecha);
+}
+function renderCorBloques(){
+  const c=$('#corBloques');if(!c)return;
+  c.innerHTML=corBloques.map((b,i)=>`<div class="corblk"><div class="corblk-n">Bloque ${i+1}</div><div class="corblk-t"><div><span>Entrada</span><input type="time" data-i="${i}" data-k="entrada" value="${b.entrada||''}"></div><div><span>Salida</span><input type="time" data-i="${i}" data-k="salida" value="${b.salida||''}"></div></div><div class="corblk-a"><button data-i="${i}" data-act="up" ${i===0?'disabled':''}>↑</button><button data-i="${i}" data-act="down" ${i===corBloques.length-1?'disabled':''}>↓</button><button data-i="${i}" data-act="del" class="cordel">🗑</button></div></div>`).join('');
+  c.querySelectorAll('input[type=time]').forEach(inp=>inp.onchange=()=>{corBloques[+inp.dataset.i][inp.dataset.k]=inp.value;actualizarCorTotal();});
+  c.querySelectorAll('.corblk-a button').forEach(btn=>btn.onclick=()=>{const i=+btn.dataset.i,act=btn.dataset.act;
+    if(act==='del'){corBloques.splice(i,1);if(!corBloques.length)corBloques=[{entrada:'',salida:''}];}
+    else if(act==='up'&&i>0){[corBloques[i-1],corBloques[i]]=[corBloques[i],corBloques[i-1]];}
+    else if(act==='down'&&i<corBloques.length-1){[corBloques[i+1],corBloques[i]]=[corBloques[i],corBloques[i+1]];}
+    renderCorBloques();});
+  actualizarCorTotal();
+}
+function actualizarCorTotal(){
+  const el=$('#corTotal');if(!el)return;let tot=0,inval=false;
+  corBloques.forEach(b=>{const e=corMin(b.entrada),s=corMin(b.salida);if(e!=null&&s!=null){if(s>e)tot+=s-e;else inval=true;}});
+  el.innerHTML=inval?'⚠ Hay un bloque con salida anterior o igual a la entrada':`Total del día: <b>${Math.floor(tot/60)}h ${String(tot%60).padStart(2,'0')}m</b>`;
+  el.style.background=inval?'#FDEDED':'#EAF7F0';el.style.color=inval?'#B21818':'#0F7A4F';
 }
 async function cargarHistCorreccion(op,fecha){
   if(!db)return;
   try{const {data}=await db.from('auditoria').select('*').eq('entidad','fichaje').eq('entidad_id',op+'|'+fecha).order('created_at',{ascending:false});
-    if(data&&data.length)$('#corHist').innerHTML='<div class="hlbl" style="margin-top:14px">Historial de correcciones</div>'+data.map(a=>{const d=a.detalle||{};const dt=new Date(a.created_at);return `<div class="corhist">${d.campo||''}: ${d.hora_original?d.hora_original+' → ':''}${d.hora_nueva||''} · ${d.motivo||''}<small>${a.usuario||'—'} · ${dt.toLocaleString('es-AR')}</small></div>`;}).join('');
+    if(data&&data.length)$('#corHist').innerHTML='<div class="hlbl" style="margin-top:14px">Historial de correcciones</div>'+data.map(a=>{const d=a.detalle||{};const dt=new Date(a.created_at);
+      const txt=d.bloques_despues!=null?`${d.bloques_antes||'(vacío)'} → ${d.bloques_despues||'(vacío)'}`:`${d.campo||''}: ${d.hora_original?d.hora_original+' → ':''}${d.hora_nueva||''}`;
+      return `<div class="corhist">${txt} · ${d.motivo||''}<small>${a.usuario||'—'} · ${dt.toLocaleString('es-AR')}</small></div>`;}).join('');
   }catch(e){console.error('histCorreccion',e);}
 }
+$('#corAdd').onclick=()=>{corBloques.push({entrada:'',salida:''});renderCorBloques();};
 $('#corClose').onclick=()=>$('#ovCorregir').classList.remove('on');
+async function restaurarFichajes(ctx){try{const rows=(ctx.eventos||[]).map(e=>({id:e.id,operario:ctx.op,tipo:e.tipo,hora:e.hora,fecha:ctx.fecha}));if(rows.length)await db.from('est_fichajes').upsert(rows,{onConflict:'id'});}catch(e){console.error('rollback fichajes',e);}}
 $('#corGuardar').onclick=async()=>{
   if(!corCtx||!db)return;
   const motivo=$('#corMotivo').value.trim();
   if(!motivo){toastMsg('El motivo es obligatorio');return;}
-  const nE=$('#corEntrada').value,nS=$('#corSalida').value;const cambios=[];
-  if(nE&&nE!==(corCtx.entradaHora||'')){cambios.push(corCtx.entradaId?{tipo:'update',id:corCtx.entradaId,campo:'entrada',orig:corCtx.entradaHora,nueva:nE}:{tipo:'insert',campo:'entrada',nueva:nE});}
-  if(nS&&nS!==(corCtx.salidaHora||'')){cambios.push(corCtx.salidaId?{tipo:'update',id:corCtx.salidaId,campo:'salida',orig:corCtx.salidaHora,nueva:nS}:{tipo:'insert',campo:'salida',nueva:nS});}
-  if(!cambios.length){toastMsg('No hay cambios para guardar');return;}
+  const limpios=corBloques.map(b=>({entrada:b.entrada||'',salida:b.salida||''})).filter(b=>b.entrada||b.salida);
+  for(const b of limpios){const e=corMin(b.entrada),s=corMin(b.salida);if(e!=null&&s!=null&&s<=e){toastMsg('Revisá: hay un bloque con salida ≤ entrada');return;}}
+  limpios.sort((a,b)=>((corMin(a.entrada)??corMin(a.salida)??0)-(corMin(b.entrada)??corMin(b.salida)??0)));
+  const nuevos=[];limpios.forEach(b=>{if(b.entrada)nuevos.push({tipo:'entrada',hora:b.entrada});if(b.salida)nuevos.push({tipo:'salida',hora:b.salida});});
+  const oldIds=(corCtx.eventos||[]).map(e=>e.id).filter(Boolean);
+  const antes=eventosABloques(corCtx.eventos).map(b=>`${b.entrada||'—'}→${b.salida||'—'}`).join(', ')||'(vacío)';
+  const despues=limpios.map(b=>`${b.entrada||'—'}→${b.salida||'—'}`).join(', ')||'(vacío)';
   try{
-    for(const c of cambios){
-      if(c.tipo==='update')await dbUpdate('est_fichajes',{hora:c.nueva},'id',c.id);
-      else await dbInsert('est_fichajes',{id:uuid(),operario:corCtx.op,tipo:c.campo,hora:c.nueva,fecha:corCtx.fecha});
-      await dbInsert('auditoria',{id:uuid(),entidad:'fichaje',entidad_id:corCtx.op+'|'+corCtx.fecha,accion:c.tipo==='update'?'modificar':'crear',detalle:{campo:c.campo,hora_original:c.orig||null,hora_nueva:c.nueva,motivo},usuario:adminWho||'admin'});
-    }
-    $('#ovCorregir').classList.remove('on');toastMsg('✓ Fichada corregida');$('#horCalc').click();
+    if(oldIds.length){const {error}=await db.from('est_fichajes').delete().in('id',oldIds);if(error)throw error;}
+    const rows=nuevos.map(n=>({id:uuid(),operario:corCtx.op,tipo:n.tipo,hora:n.hora,fecha:corCtx.fecha}));
+    if(rows.length){const {error}=await db.from('est_fichajes').insert(rows);if(error){await restaurarFichajes(corCtx);throw error;}}
+    await dbInsert('auditoria',{id:uuid(),entidad:'fichaje',entidad_id:corCtx.op+'|'+corCtx.fecha,accion:'reconstruir',detalle:{bloques_antes:antes,bloques_despues:despues,motivo},usuario:adminWho||'admin'});
+    $('#ovCorregir').classList.remove('on');toastMsg('✓ Jornada corregida');
+    await loadData();
+    $('#horCalc').click();
   }catch(e){console.error('corregir',e);toastMsg('⚠ No se pudo guardar la corrección');}
 };
 
@@ -1378,7 +1428,7 @@ let feriadosDB=[];
 const FERIADOS_NAC=[['01-01','Año Nuevo'],['03-24','Memoria'],['04-02','Malvinas'],['05-01','Trabajador'],['05-25','Revolución de Mayo'],['06-20','Belgrano'],['07-09','Independencia'],['12-08','Inmaculada'],['12-25','Navidad']];
 function isFeriado(d){const md=String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');if(FERIADOS_NAC.some(f=>f[0]===md))return true;const iso=d.getFullYear()+'-'+md;return feriadosDB.some(f=>f.fecha===iso);}
 function toMinHM(hhmm){const p=String(hhmm).split(':');return (+p[0])*60+(+p[1]);}
-function workedMin(eventos){let total=0,open=null;(eventos||[]).forEach(e=>{if(e.tipo==='entrada')open=toMinHM(e.hhmm);else if(e.tipo==='salida'&&open!=null){total+=toMinHM(e.hhmm)-open;open=null;}});if(open!=null){const now=new Date();total+=(now.getHours()*60+now.getMinutes())-open;}return Math.max(0,total);}
+function workedMin(eventos){const evs=(eventos||[]).slice().sort((a,b)=>String(a.hhmm).localeCompare(String(b.hhmm)));let total=0,open=null;evs.forEach(e=>{if(e.tipo==='entrada')open=toMinHM(e.hhmm);else if(e.tipo==='salida'&&open!=null){total+=toMinHM(e.hhmm)-open;open=null;}});if(open!=null){const now=new Date();total+=(now.getHours()*60+now.getMinutes())-open;}return Math.max(0,total);}
 function fmtHM(m){return Math.floor(m/60)+'h '+String(m%60).padStart(2,'0')+'m';}
 function renderHoras(){
   const today=new Date();const dow=today.getDay();const allExtra=(dow===0||dow===6||isFeriado(today));
