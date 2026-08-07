@@ -1300,11 +1300,13 @@ const HorasService={
         const w=workedMinClosed(rows.map(r=>({tipo:r.tipo,hhmm:r.hora})));
         const entradaRow=rows.find(r=>r.tipo==='entrada');const sals=rows.filter(r=>r.tipo==='salida');const salidaRow=sals.length?sals[sals.length-1]:null;
         const estado=entradaRow&&salidaRow?'completo':(entradaRow?'falta_salida':(salidaRow?'falta_entrada':'sin'));
-        const dt=new Date(fecha+'T12:00:00');const dow=dt.getDay();const fer=isFeriado(dt);const finde=(dow===0||dow===6);
-        let norm=0,ext=0,feriadoDia=0;if(w>0){if(fer){feriadoDia=1;}else if(finde){ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}}
-        (ops[op]=ops[op]||{dias:[],tN:0,tE:0,dT:0,fer:0}).dias.push({fecha,worked:w,normal:norm,extra:ext,feriado:feriadoDia,tipo:fer?'feriado':(finde?'fin de semana':'normal'),estado,entradaId:entradaRow?entradaRow.id:null,entradaHora:entradaRow?entradaRow.hora:'',salidaId:salidaRow?salidaRow.id:null,salidaHora:salidaRow?salidaRow.hora:'',eventos:rows.map(r=>({id:r.id,tipo:r.tipo,hora:r.hora}))});
-        ops[op].tN+=norm;ops[op].tE+=ext;ops[op].fer+=feriadoDia;if(w>0)ops[op].dT++;});
-      res.empleados=Object.entries(ops).map(([op,v])=>({empleado:op,dias:v.dias.sort((a,b)=>a.fecha<b.fecha?-1:1),totNormal:v.tN,totExtra:v.tE,feriados:v.fer,diasTrab:v.dT,totMin:v.tN+v.tE})).sort((a,b)=>a.empleado.localeCompare(b.empleado));
+        const dt=new Date(fecha+'T12:00:00');const dow=dt.getDay();const fer=isFeriado(dt);const sab=(dow===6),dom=(dow===0);
+        let norm=0,ext=0,sabm=0,ferTrab=0;
+        if(w>0){if(fer){ext=w;ferTrab=1;}else if(sab){sabm=w;}else if(dom){ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}}
+        const tipo=fer?'feriado':(sab?'sábado':(dom?'domingo':'normal'));
+        (ops[op]=ops[op]||{dias:[],tN:0,tE:0,tS:0,dT:0,ferT:0}).dias.push({fecha,worked:w,normal:norm,extra:ext+sabm,sabado:sabm,feriado:fer?1:0,tipo,estado,entradaId:entradaRow?entradaRow.id:null,entradaHora:entradaRow?entradaRow.hora:'',salidaId:salidaRow?salidaRow.id:null,salidaHora:salidaRow?salidaRow.hora:'',eventos:rows.map(r=>({id:r.id,tipo:r.tipo,hora:r.hora}))});
+        ops[op].tN+=norm;ops[op].tE+=ext;ops[op].tS+=sabm;ops[op].ferT+=ferTrab;if(w>0)ops[op].dT++;});
+      res.empleados=Object.entries(ops).map(([op,v])=>({empleado:op,dias:v.dias.sort((a,b)=>a.fecha<b.fecha?-1:1),totNormal:v.tN,totExtra:v.tE,totSabado:v.tS,feriadosTrab:v.ferT,diasTrab:v.dT,totMin:v.tN+v.tE+v.tS})).sort((a,b)=>a.empleado.localeCompare(b.empleado));
     }catch(e){console.error('HorasService',e);}
     return res;
   },
@@ -1336,12 +1338,13 @@ function renderLiq(m){
     return `<div class="adcard">
       <div class="adh liqhead" data-e="${ei}">${e.empleado}<small>Total estimado · <b>${money(e.total)}</b> · tocá para ver</small></div>
       <div class="adbd">
-        <div class="hsum"><div><div class="v num">${HorasService.hm(e.totNormal)}</div><div class="k">Normales</div></div><div><div class="v num">${HorasService.hm(e.totExtra)}</div><div class="k">Extras</div></div><div><div class="v num">${e.feriados}</div><div class="k">Feriados</div></div></div>
+        <div class="hsum"><div><div class="v num">${HorasService.hm(e.totNormal)}</div><div class="k">Normales</div></div><div><div class="v num">${HorasService.hm(e.totExtra)}</div><div class="k">Extras</div></div><div><div class="v num">${HorasService.hm(e.totSabado)}</div><div class="k">Sábados</div></div></div>
         <div class="liqdetail" id="liqd${ei}" style="display:none">
           <div class="liqbreak">
             <div><span>Horas normales</span><span>${HorasService.hm(e.totNormal)} × ${money(m.config.normal)} = <b>${money(e.pagoNormal)}</b></span></div>
             <div><span>Horas extras</span><span>${HorasService.hm(e.totExtra)} × ${money(m.config.extra)} = <b>${money(e.pagoExtra)}</b></span></div>
-            <div><span>Feriados</span><span>${e.feriados} × ${money(m.config.feriado)} = <b>${money(e.pagoFeriado)}</b></span></div>
+            <div><span>Sábados trabajados</span><span>${HorasService.hm(e.totSabado)} × ${money(m.config.extra)} = <b>${money(e.pagoSabado)}</b></span></div>
+            <div><span>Feriados (${e.feriadosTrab} trab · ${e.feriadosNoTrab} no trab)</span><span>${e.feriadosTrab+e.feriadosNoTrab} × ${money(m.config.feriado)} = <b>${money(e.pagoFeriado)}</b></span></div>
             <div><span>Descuentos</span><span style="color:#C0392B">− ${money(e.descTotal)}</span></div>
             <div class="liqtot"><span>TOTAL A COBRAR</span><span>${money(e.total)}</span></div>
           </div>
@@ -1438,49 +1441,67 @@ const TIPO_DESC={falta_injustificada:'Falta injustificada',llegada_tarde:'Llegad
 let CONFIG_LIQ={hora_normal:5000,hora_extra:8000,feriado:30000};
 async function loadConfigLiq(){if(!db)return;try{const {data}=await db.from('est_config').select('*');(data||[]).forEach(r=>{if(r.clave in CONFIG_LIQ)CONFIG_LIQ[r.clave]=Number(r.valor);});}catch(e){console.error('config liq',e);}}
 async function loadDescuentos(desde,hasta){if(!db)return {};try{const {data}=await db.from('est_descuentos').select('*').gte('fecha',desde).lte('fecha',hasta);const by={};(data||[]).forEach(d=>{(by[d.operario]=by[d.operario]||[]).push(d);});Object.values(by).forEach(a=>a.sort((x,y)=>x.fecha<y.fecha?-1:1));return by;}catch(e){console.error('load desc',e);return {};}}
+function feriadosEnRango(desde,hasta){
+  if(!desde||!hasta)return [];
+  const p=desde.split('-'),q=hasta.split('-');
+  let d=new Date(+p[0],(+p[1])-1,+p[2]);const end=new Date(+q[0],(+q[1])-1,+q[2]);const out=[];let guard=0;
+  while(d<=end&&guard<1000){if(isFeriado(d))out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));d.setDate(d.getDate()+1);guard++;}
+  return out;
+}
 const LiqService={
   async modelo(desde,hasta,lbl){
     const h=await HorasService.modelo(desde,hasta,'__all__',lbl);
     const desc=await loadDescuentos(desde,hasta);
     const cfg={normal:CONFIG_LIQ.hora_normal,extra:CONFIG_LIQ.hora_extra,feriado:CONFIG_LIQ.feriado};
+    const ferList=feriadosEnRango(desde,hasta);const numFer=ferList.length;
     const map={};h.empleados.forEach(e=>map[e.empleado]=e);
-    Object.keys(desc).forEach(op=>{if(!map[op])map[op]={empleado:op,dias:[],totNormal:0,totExtra:0,feriados:0,diasTrab:0,totMin:0};});
-    const empleados=Object.values(map).sort((a,b)=>a.empleado.localeCompare(b.empleado));
+    const vacio=n=>({empleado:n,dias:[],totNormal:0,totExtra:0,totSabado:0,feriadosTrab:0,diasTrab:0,totMin:0});
+    (EQUIPO||[]).forEach(n=>{if(!map[n])map[n]=vacio(n);});                 // roster: todos cobran el feriado aunque no fichen
+    Object.keys(desc).forEach(op=>{if(!map[op])map[op]=vacio(op);});
+    let empleados=Object.values(map);
     empleados.forEach(e=>{
-      e.feriados=e.feriados||0;
+      e.totSabado=e.totSabado||0;e.feriadosTrab=e.feriadosTrab||0;
+      e.feriadosNoTrab=Math.max(0,numFer-e.feriadosTrab);
+      e.importeFeriados=numFer*cfg.feriado;                                // (trab + no trab) = numFer, para cada empleado
       e.descuentos=(desc[e.empleado]||[]).map(d=>({...d,montoLive:(d.modo==='monto'?Number(d.cantidad):Number(d.cantidad)*cfg.normal)}));
       e.descTotal=e.descuentos.reduce((s,d)=>s+d.montoLive,0);
       e.pagoNormal=e.totNormal/60*cfg.normal;
       e.pagoExtra=e.totExtra/60*cfg.extra;
-      e.pagoFeriado=e.feriados*cfg.feriado;
-      e.subtotal=e.pagoNormal+e.pagoExtra+e.pagoFeriado;
+      e.pagoSabado=e.totSabado/60*cfg.extra;
+      e.pagoFeriado=e.importeFeriados;
+      e.subtotal=e.pagoNormal+e.pagoExtra+e.pagoSabado+e.pagoFeriado;
       e.total=e.subtotal-e.descTotal;
     });
-    return {desde,hasta,label:lbl,generado:new Date(),config:cfg,empleados};
+    if(!numFer)empleados=empleados.filter(e=>e.diasTrab>0||e.descuentos.length);   // sin feriados: sólo quienes tienen actividad
+    empleados.sort((a,b)=>a.empleado.localeCompare(b.empleado));
+    return {desde,hasta,label:lbl,generado:new Date(),config:cfg,numFeriados:numFer,feriados:ferList,empleados};
   }
 };
 function liqDescriptor(e,m){
-  const dias=e.dias.map(d=>({fecha:d.fecha,tipo:d.feriado?'feriado':d.tipo,bloques:eventosABloques(d.eventos||[]).map(b=>`${b.entrada||'—'}-${b.salida||'—'}`).join(' · ')||'—',normal:d.normal,extra:d.extra,feriado:d.feriado?'Sí':''}));
+  const dias=e.dias.map(d=>({fecha:d.fecha,tipo:d.tipo,bloques:eventosABloques(d.eventos||[]).map(b=>`${b.entrada||'—'}-${b.salida||'—'}`).join(' · ')||'—',normal:d.normal,extra:d.extra}));
   const descFilas=e.descuentos.map(d=>({fecha:d.fecha,tipo:TIPO_DESC[d.tipo]||d.tipo,cantidad:(d.modo==='horas'?(d.cantidad+' h'):money(d.cantidad)),motivo:d.motivo||'',observacion:d.observacion||'',monto:d.montoLive}));
   return {titulo:'Liquidación · '+e.empleado,periodo:{label:m.label,desde:m.desde,hasta:m.hasta},filtros:{Empleado:e.empleado},
     kpis:[
       {label:'Horas normales',value:HorasService.hm(e.totNormal)+' × '+money(m.config.normal)+' = '+money(e.pagoNormal)},
       {label:'Horas extras',value:HorasService.hm(e.totExtra)+' × '+money(m.config.extra)+' = '+money(e.pagoExtra)},
-      {label:'Feriados trabajados',value:e.feriados+' × '+money(m.config.feriado)+' = '+money(e.pagoFeriado)},
+      {label:'Sábados trabajados',value:HorasService.hm(e.totSabado)+' × '+money(m.config.extra)+' = '+money(e.pagoSabado)},
+      {label:'Feriados trabajados',value:String(e.feriadosTrab)},
+      {label:'Feriados no trabajados',value:String(e.feriadosNoTrab)},
+      {label:'Importe por feriados',value:(e.feriadosTrab+e.feriadosNoTrab)+' × '+money(m.config.feriado)+' = '+money(e.pagoFeriado)},
       {label:'Descuentos',value:'− '+money(e.descTotal)},
       {label:'TOTAL A COBRAR',value:money(e.total)}
     ],
     secciones:[
-      {titulo:'Jornadas',columnas:[{key:'fecha',label:'Fecha'},{key:'tipo',label:'Tipo'},{key:'bloques',label:'Bloques'},{key:'normal',label:'Normales',fmt:'time'},{key:'extra',label:'Extras',fmt:'time'},{key:'feriado',label:'Feriado'}],filas:dias},
+      {titulo:'Jornadas',columnas:[{key:'fecha',label:'Fecha'},{key:'tipo',label:'Concepto'},{key:'bloques',label:'Bloques'},{key:'normal',label:'Normales',fmt:'time'},{key:'extra',label:'Extras',fmt:'time'}],filas:dias},
       {titulo:'Descuentos',columnas:[{key:'fecha',label:'Fecha'},{key:'tipo',label:'Tipo'},{key:'cantidad',label:'Cantidad'},{key:'motivo',label:'Motivo'},{key:'observacion',label:'Observación'},{key:'monto',label:'Monto',fmt:'num'}],filas:descFilas,totales:{observacion:'Total descuentos',monto:e.descTotal}}
     ],archivo:'Liquidacion_'+e.empleado.replace(/\s+/g,'-')+'_'+m.desde+'_'+m.hasta};
 }
 function liqResumenDescriptor(m){
-  const filas=m.empleados.map(e=>({empleado:e.empleado,dias:e.diasTrab,normal:e.totNormal,extra:e.totExtra,feriados:e.feriados,pn:e.pagoNormal,px:e.pagoExtra,pf:e.pagoFeriado,desc:e.descTotal,total:e.total}));
+  const filas=m.empleados.map(e=>({empleado:e.empleado,dias:e.diasTrab,normal:e.totNormal,extra:e.totExtra,sabado:e.totSabado,ft:e.feriadosTrab,fnt:e.feriadosNoTrab,pn:e.pagoNormal,px:e.pagoExtra,ps:e.pagoSabado,pf:e.pagoFeriado,desc:e.descTotal,total:e.total}));
   const T=k=>m.empleados.reduce((s,e)=>s+(e[k]||0),0);
-  return {titulo:'Liquidación del personal',periodo:{label:m.label,desde:m.desde,hasta:m.hasta},
-    kpis:[{label:'Empleados',value:m.empleados.length},{label:'Total a pagar',value:money(T('total'))},{label:'Horas normales',value:HorasService.hm(T('totNormal'))},{label:'Horas extras',value:HorasService.hm(T('totExtra'))},{label:'Feriados',value:T('feriados')},{label:'Descuentos',value:money(T('descTotal'))},{label:'Valores',value:'Normal '+money(m.config.normal)+' · Extra '+money(m.config.extra)+' · Feriado '+money(m.config.feriado)}],
-    secciones:[{titulo:'Liquidación por empleado',columnas:[{key:'empleado',label:'Empleado'},{key:'dias',label:'Días',fmt:'num'},{key:'normal',label:'Normales',fmt:'time'},{key:'extra',label:'Extras',fmt:'time'},{key:'feriados',label:'Feriados',fmt:'num'},{key:'pn',label:'$ Normal',fmt:'num'},{key:'px',label:'$ Extra',fmt:'num'},{key:'pf',label:'$ Feriado',fmt:'num'},{key:'desc',label:'Descuentos',fmt:'num'},{key:'total',label:'Total',fmt:'num'}],filas,totales:{empleado:'Total',normal:T('totNormal'),extra:T('totExtra'),feriados:T('feriados'),pn:T('pagoNormal'),px:T('pagoExtra'),pf:T('pagoFeriado'),desc:T('descTotal'),total:T('total')}}],
+  return {titulo:'Liquidación del personal',periodo:{label:m.label,desde:m.desde,hasta:m.hasta},filtros:{'Feriados en el período':String(m.numFeriados)},
+    kpis:[{label:'Empleados',value:m.empleados.length},{label:'Total a pagar',value:money(T('total'))},{label:'Horas normales',value:HorasService.hm(T('totNormal'))},{label:'Horas extras',value:HorasService.hm(T('totExtra'))},{label:'Sábados',value:HorasService.hm(T('totSabado'))},{label:'Feriados en el período',value:m.numFeriados},{label:'Descuentos',value:money(T('descTotal'))},{label:'Valores',value:'Normal '+money(m.config.normal)+' · Extra '+money(m.config.extra)+' · Feriado '+money(m.config.feriado)}],
+    secciones:[{titulo:'Liquidación por empleado',columnas:[{key:'empleado',label:'Empleado'},{key:'dias',label:'Días',fmt:'num'},{key:'normal',label:'Normales',fmt:'time'},{key:'extra',label:'Extras',fmt:'time'},{key:'sabado',label:'Sábados',fmt:'time'},{key:'ft',label:'Fer. trab',fmt:'num'},{key:'fnt',label:'Fer. no trab',fmt:'num'},{key:'pn',label:'$ Normal',fmt:'num'},{key:'px',label:'$ Extra',fmt:'num'},{key:'ps',label:'$ Sábado',fmt:'num'},{key:'pf',label:'$ Feriado',fmt:'num'},{key:'desc',label:'Descuentos',fmt:'num'},{key:'total',label:'Total',fmt:'num'}],filas,totales:{empleado:'Total',normal:T('totNormal'),extra:T('totExtra'),sabado:T('totSabado'),ft:T('feriadosTrab'),fnt:T('feriadosNoTrab'),pn:T('pagoNormal'),px:T('pagoExtra'),ps:T('pagoSabado'),pf:T('pagoFeriado'),desc:T('descTotal'),total:T('total')}}],
     archivo:'Liquidacion_taller_'+m.desde+'_'+m.hasta};
 }
 /* Config overlay */
