@@ -315,6 +315,11 @@
   .corblk-a button:disabled{opacity:.35}
   .corblk-a .cordel{color:#DC2626;border-color:#F0C9C9}
   .cortotal{margin-top:10px;font-size:15px;font-weight:800;text-align:center;padding:11px;background:#EAF7F0;border-radius:10px;color:#0F7A4F}
+
+  /* ── Barra de exportación de informes (reutilizable) ── */
+  .expbar{display:flex;gap:10px;margin:2px 0 16px}
+  .expbtn{flex:1;font-family:inherit;font-weight:800;font-size:15px;padding:13px;border-radius:12px;cursor:pointer;border:1px solid var(--line2);background:var(--surf);color:var(--ink)}
+  .expbtn.pdf{background:var(--ink);color:#fff;border-color:var(--ink)}
 </style>
 </head>
 <body>
@@ -370,6 +375,7 @@
     <div class="screen" id="scPedidos">
       <h2>Trabajos del día</h2>
       <p style="font-size:13px;color:var(--gray);margin:-6px 0 14px;line-height:1.5">Los pedidos que ya se cargaron. Si el número está en esta lista, el trabajo está impreso.</p>
+      <div class="expbar"><button class="expbtn pdf" id="pedPdf">📄 PDF</button><button class="expbtn" id="pedXls">📊 Excel</button></div>
       <div id="pedList"></div>
     </div>
 
@@ -393,6 +399,7 @@
         <div class="adkpi"><div class="v num" id="adImp">0</div><div class="k">Impresiones</div></div>
         <div class="adkpi"><div class="v num" id="adPed">0</div><div class="k">Pedidos</div></div>
       </div>
+      <div class="expbar"><button class="expbtn pdf" id="adPdf">📄 Informe del día (PDF)</button><button class="expbtn" id="adXls">📊 Excel</button></div>
       <div class="adcard"><div class="adh">Trabajos cargados<small>tocá ✕ para borrar (útil para limpiar pruebas)</small></div><div class="adbd" id="adPedidos"></div></div>
       <div class="adcard"><div class="adh">Producción por operario<small>ordenado por impresiones (caras × colores)</small></div><div class="adbd" id="adOps"></div></div>
       <div class="adcard"><div class="adh">Impresiones por tinta<small>al agua vs solvente</small></div><div class="adbd"><div class="hlbl">Todo el taller</div><div class="adsplit"><div class="adhalf"><div class="v num" id="adAgua">0</div><div class="k">Al agua</div><div class="p" id="adAguaP">—</div></div><div class="adhalf"><div class="v num" id="adSolv">0</div><div class="k">Solvente Eva Flex</div><div class="p" id="adSolvP">—</div></div></div><div class="hlbl">Solo friselina</div><div class="adsplit"><div class="adhalf"><div class="v num" id="adAguaF">0</div><div class="k">Al agua</div><div class="p" id="adAguaFP">—</div></div><div class="adhalf"><div class="v num" id="adSolvF">0</div><div class="k">Solvente Eva Flex</div><div class="p" id="adSolvFP">—</div></div></div></div></div>
@@ -418,6 +425,7 @@
       </div>
       <div class="calgrid" id="calHead"></div>
       <div class="calgrid" id="calDays"></div>
+      <div class="expbar" style="margin-top:14px"><button class="expbtn pdf" id="histPdf">📄 PDF del mes</button><button class="expbtn" id="histXls">📊 Excel del mes</button></div>
       <p class="foot" style="margin-top:12px;color:var(--gray);font-size:12px">Los días en amarillo tienen producción. Tocá uno para ver el detalle.</p>
     </div>
 
@@ -477,6 +485,7 @@
         <button data-p="mes" class="on">Mes</button>
         <button data-p="todo">Todo</button>
       </div>
+      <div class="expbar"><button class="expbtn pdf" id="anaPdf">📄 PDF</button><button class="expbtn" id="anaXls">📊 Excel</button></div>
       <div class="adkpis">
         <div class="adkpi"><div class="v num" id="anaBol">0</div><div class="k">Bolsas</div></div>
         <div class="adkpi"><div class="v num" id="anaImp">0</div><div class="k">Impresiones</div></div>
@@ -532,6 +541,7 @@
       <div class="adhead"><div><div class="adttl">Puntos de producción</div><div class="adsub">🧪 mes de calibración</div></div><button class="adexit" id="puntBack">‹ Volver</button></div>
       <div class="calibbanner">🧪 <b>Mes de calibración.</b> Los puntos son experimentales y pueden cambiar. Sirven para juntar datos reales — todavía sin efecto económico.</div>
       <div class="tabs" id="puntTabs"><button data-p="semana">Semana</button><button data-p="mes" class="on">Mes</button><button data-p="todo">Todo</button></div>
+      <div class="expbar"><button class="expbtn pdf" id="puntPdf">📄 PDF</button><button class="expbtn" id="puntXls">📊 Excel</button></div>
       <div class="adkpis"><div class="adkpi"><div class="v num" id="puntTot">0</div><div class="k">Puntos</div></div><div class="adkpi"><div class="v num" id="puntImp">0</div><div class="k">Impresiones</div></div><div class="adkpi"><div class="v num" id="puntPed">0</div><div class="k">Pedidos</div></div></div>
       <div class="adcard"><div class="adh">Puntos por operario</div><div class="adbd" id="puntOps"></div></div>
       <div class="adcard"><div class="adh">Puntos por medida</div><div class="adbd" id="puntMed"></div></div>
@@ -997,6 +1007,7 @@ async function renderCalendario(){
   $('#calHead').innerHTML=H_DOW.map(d=>`<div class="caldow">${d}</div>`).join('');
   $('#calDays').innerHTML='<div class="admuted" style="grid-column:1/-1;padding:14px">Cargando…</div>';
   const peds=await fetchPedidosRango(new Date(histY,histM,1).toISOString(),new Date(histY,histM+1,1).toISOString());
+  histExport={y:histY,m:histM,peds};
   histPorDia={};peds.forEach(p=>{const k=new Date(p.created_at).getDate();(histPorDia[k]=histPorDia[k]||[]).push(p);});
   const off=(new Date(histY,histM,1).getDay()+6)%7;const dim=new Date(histY,histM+1,0).getDate();
   const hoy=new Date();const esMesHoy=(hoy.getFullYear()===histY&&hoy.getMonth()===histM);
@@ -1051,7 +1062,7 @@ async function renderAnalitica(){
   const r=anaRango();$('#anaLbl').textContent=r[2];
   ['anaMat','anaMed','anaComb','anaColB','anaColT','anaOps','anaTend'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
   const peds=await fetchPedidosRango(r[0],r[1]);const a=analizarPedidos(peds);
-  $('#anaBol').textContent=a.bolsas.toLocaleString('es-AR');$('#anaImp').textContent=a.impresiones.toLocaleString('es-AR');$('#anaPed').textContent=a.pedidos;
+  anaExport={a,rango:r,peds};$('#anaBol').textContent=a.bolsas.toLocaleString('es-AR');$('#anaImp').textContent=a.impresiones.toLocaleString('es-AR');$('#anaPed').textContent=a.pedidos;
   $('#anaTend').innerHTML=tendenciaSVG(peds);
   $('#anaMat').innerHTML=rankBarsN(a.mat,null,8);
   $('#anaMed').innerHTML=rankBarsN(a.med,null,10);
@@ -1094,45 +1105,126 @@ const ReportService={
       pedidos:(pedidos||[]).map(p=>({p,lineas:p.est_lineas||[]}))
     };
   },
-  pdf(m){
-    const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});const W=doc.internal.pageSize.getWidth(),Hp=doc.internal.pageSize.getHeight();
-    const fechaTxt=m.fecha.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-    doc.setFillColor(34,34,34);doc.rect(0,0,W,64,'F');
-    doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('Reporte de Producción',40,30);
-    doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(255,193,7);doc.text('Sistema de Producción',40,48);
-    doc.setTextColor(255,255,255);doc.setFontSize(9);doc.text('Jornada '+m.id,W-40,24,{align:'right'});doc.text(fechaTxt,W-40,38,{align:'right'});doc.text('Generado: '+m.generado.toLocaleString('es-AR'),W-40,52,{align:'right'});
-    let y=88;doc.setTextColor(34,34,34);
-    doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('Resumen general',40,y);
-    doc.autoTable({startY:y+6,theme:'grid',styles:{fontSize:9,cellPadding:5},headStyles:{fillColor:[245,245,245],textColor:[34,34,34]},
-      head:[['Pedidos','Bolsas','Impresiones','Presentes','Impresores','H. normales','H. extras']],
-      body:[[m.resumen.pedidos,m.resumen.bolsas.toLocaleString('es-AR'),m.resumen.impresiones.toLocaleString('es-AR'),m.resumen.presentes,m.resumen.impresores,ReportService.fmtH(m.resumen.hNormal),ReportService.fmtH(m.resumen.hExtra)]]});
-    y=doc.lastAutoTable.finalY+18;
-    const tabla=(titulo,head,body)=>{if(!body.length)return;if(y>Hp-60){doc.addPage();y=48;}doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(34,34,34);doc.text(titulo,40,y);doc.autoTable({startY:y+6,theme:'striped',styles:{fontSize:9,cellPadding:4},headStyles:{fillColor:[255,193,7],textColor:[34,34,34]},head:[head],body});y=doc.lastAutoTable.finalY+18;};
-    tabla('Producción por operario',['Operario','Bolsas','Impresiones','%'],m.porOperario.map(o=>[o.operario,o.bolsas.toLocaleString('es-AR'),o.impresiones.toLocaleString('es-AR'),o.pct+'%']));
-    tabla('Producción por material',['Material','Cantidad','%'],m.porMaterial.map(r=>[r.nombre,r.cantidad.toLocaleString('es-AR'),r.pct+'%']));
-    tabla('Producción por medida',['Medida','Cantidad','%'],m.porMedida.map(r=>[r.nombre,r.cantidad.toLocaleString('es-AR'),r.pct+'%']));
-    tabla('Color de bolsa',['Color','Cantidad','%'],m.porColorBolsa.map(r=>[r.nombre,r.cantidad.toLocaleString('es-AR'),r.pct+'%']));
-    tabla('Color de tinta',['Color','Cantidad','%'],m.porColorTinta.map(r=>[r.nombre,r.cantidad.toLocaleString('es-AR'),r.pct+'%']));
-    tabla('Combinaciones más fabricadas',['Combinación','Cantidad'],m.combinaciones.map(c=>[c.combo,c.cantidad.toLocaleString('es-AR')]));
-    const pedBody=[];m.pedidos.forEach(({p,lineas})=>{const dt=new Date(p.created_at);const fh=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');lineas.forEach(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;pedBody.push(['#'+p.numero,p.operario+' '+fh,P?P.name:l.producto,l.medida,l.color_bolsa||'—',cols||'—',l.tipo_tinta||'—',(l.cantidad||0).toLocaleString('es-AR')]);});});
-    tabla('Pedidos del día',['N°','Operario','Material','Medida','Bolsa','Tinta','Tipo','Cant.'],pedBody);
-    const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(140,140,140);doc.text('Generado automáticamente por el Sistema de Producción · '+m.generado.toLocaleString('es-AR'),40,Hp-20);doc.text('Pág. '+i+'/'+pages,W-40,Hp-20,{align:'right'});}
-    doc.save('Reporte_'+m.id+'.pdf');
-  },
-  excel(m){
-    const XLSX=window.XLSX;const wb=XLSX.utils.book_new();
-    const add=(nombre,rows)=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),nombre);
-    add('Resumen',[['Reporte de Producción'],['Jornada',m.id],['Fecha',m.fecha.toLocaleDateString('es-AR')],['Generado',m.generado.toLocaleString('es-AR')],[],['Pedidos',m.resumen.pedidos],['Bolsas',m.resumen.bolsas],['Impresiones',m.resumen.impresiones],['Presentes',m.resumen.presentes],['Impresores',m.resumen.impresores],['Horas normales',ReportService.fmtH(m.resumen.hNormal)],['Horas extras',ReportService.fmtH(m.resumen.hExtra)]]);
-    const pedRows=[['N°','Operario','Hora','Material','Medida','Color bolsa','Color tinta','Tipo tinta','Caras','Colores','Cantidad']];m.pedidos.forEach(({p,lineas})=>{const dt=new Date(p.created_at);const fh=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');lineas.forEach(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);pedRows.push(['#'+p.numero,p.operario,fh,P?P.name:l.producto,l.medida,l.color_bolsa||'',l.colores===2?(l.tinta+'+'+l.tinta2):(l.tinta||''),l.tipo_tinta||'',l.caras,l.colores,l.cantidad||0]);});});
-    add('Pedidos',pedRows);
-    add('Operarios',[['Operario','Bolsas','Impresiones','%'],...m.porOperario.map(o=>[o.operario,o.bolsas,o.impresiones,o.pct])]);
-    add('Materiales',[['Material','Cantidad','%'],...m.porMaterial.map(r=>[r.nombre,r.cantidad,r.pct])]);
-    add('Medidas',[['Medida','Cantidad','%'],...m.porMedida.map(r=>[r.nombre,r.cantidad,r.pct])]);
-    add('Colores',[['Tipo','Color','Cantidad','%'],...m.porColorBolsa.map(r=>['Bolsa',r.nombre,r.cantidad,r.pct]),...m.porColorTinta.map(r=>['Tinta',r.nombre,r.cantidad,r.pct])]);
-    add('Combinaciones',[['Combinación','Cantidad'],...m.combinaciones.map(c=>[c.combo,c.cantidad])]);
-    XLSX.writeFile(wb,'Reporte_'+m.id+'.xlsx');
-  }
+  pdf(m){ExportService.pdf(repDescriptor(m));},
+  excel(m){ExportService.excel(repDescriptor(m));}
 };
+
+/* ── ExportService · motor ÚNICO de informes (PDF + Excel) reutilizable por cualquier pantalla ── */
+const ExportService={
+  SISTEMA:'Sistema de Producción',
+  hm(min){min=Math.round(min||0);return Math.floor(min/60)+'h '+String(min%60).padStart(2,'0')+'m';},
+  hdec(min){return Math.round((min||0)/60*100)/100;},
+  _fpdf(v,fmt){if(v==null||v==='')return '';if(fmt==='time')return ExportService.hm(v);if(fmt==='pct')return (typeof v==='number'?v:(parseFloat(v)||0))+'%';if(fmt==='num')return Number(v).toLocaleString('es-AR');return String(v);},
+  _fx(v,fmt){if(v==null||v==='')return '';if(fmt==='time')return ExportService.hdec(v);if(fmt==='num'||fmt==='pct')return Number(v);return v;},
+  _per(p){if(!p)return '';let s=p.label||'';if(p.desde){s+=' · '+p.desde;if(p.hasta&&p.hasta!==p.desde)s+=' a '+p.hasta;}return s;},
+  _barras(doc,sec,y,W){const g=sec.grafico,f=sec.filas||[];if(!f.length)return y;const vals=f.map(r=>Number(r[g.yKey])||0);const max=Math.max(1,...vals);const x0=40,wtot=W-80,h=78,base=y+h,n=vals.length,step=wtot/n,bw=Math.max(2,Math.min(22,step-3));doc.setDrawColor(228,228,228);doc.line(x0,base,x0+wtot,base);vals.forEach((v,i)=>{const bh=v/max*(h-8);doc.setFillColor(255,193,7);doc.rect(x0+i*step,base-bh,bw,Math.max(1,bh),'F');});return base+8;},
+  pdf(rep){
+    const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();const gen=new Date();
+    doc.setFillColor(34,34,34);doc.rect(0,0,W,66,'F');
+    doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text(ExportService.SISTEMA,40,28);
+    doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(255,193,7);doc.text('Informe · '+(rep.titulo||''),40,47);
+    doc.setTextColor(255,255,255);doc.setFontSize(9);const per=ExportService._per(rep.periodo);if(per)doc.text(per,W-40,28,{align:'right'});doc.text('Emitido: '+gen.toLocaleString('es-AR'),W-40,47,{align:'right'});
+    let y=88;doc.setTextColor(34,34,34);
+    if(rep.filtros&&Object.keys(rep.filtros).length){doc.setFontSize(9);doc.setTextColor(90,90,90);doc.text('Filtros — '+Object.entries(rep.filtros).map(([k,v])=>k+': '+v).join('   ·   '),40,y);y+=18;doc.setTextColor(34,34,34);}
+    if(rep.kpis&&rep.kpis.length){doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('Resumen ejecutivo',40,y);doc.autoTable({startY:y+6,theme:'grid',styles:{fontSize:10,cellPadding:5},headStyles:{fillColor:[245,245,245],textColor:[34,34,34]},head:[['Indicador','Valor']],body:rep.kpis.map(k=>[k.label,String(k.value)])});y=doc.lastAutoTable.finalY+18;}
+    (rep.secciones||[]).forEach(sec=>{const filas=sec.filas||[];if(!filas.length&&!sec.totales)return;if(y>H-100){doc.addPage();y=48;}doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(34,34,34);doc.text(sec.titulo||'',40,y);y+=6;if(sec.grafico&&filas.length)y=ExportService._barras(doc,sec,y+4,W)+6;const cols=sec.columnas||[];const head=[cols.map(c=>c.label)];const body=filas.map(f=>cols.map(c=>ExportService._fpdf(f[c.key],c.fmt)));const foot=sec.totales?[cols.map(c=>(c.key in sec.totales)?ExportService._fpdf(sec.totales[c.key],c.fmt):'')]:undefined;doc.autoTable({startY:y,theme:'striped',styles:{fontSize:9,cellPadding:4},headStyles:{fillColor:[255,193,7],textColor:[34,34,34]},head,body,foot,footStyles:{fillColor:[240,240,240],textColor:[34,34,34],fontStyle:'bold'}});y=doc.lastAutoTable.finalY+18;});
+    const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(140,140,140);doc.text(ExportService.SISTEMA+' · '+(rep.titulo||'')+' · '+gen.toLocaleString('es-AR'),40,H-20);doc.text('Pág. '+i+'/'+pages,W-40,H-20,{align:'right'});}
+    doc.save((rep.archivo||'Informe')+'.pdf');
+  },
+  excel(rep){
+    const XLSX=window.XLSX;const wb=XLSX.utils.book_new();const gen=new Date();
+    const meta=[[ExportService.SISTEMA],['Informe',rep.titulo||'']];const per=ExportService._per(rep.periodo);if(per)meta.push(['Período',per]);meta.push(['Emitido',gen.toLocaleString('es-AR')]);
+    if(rep.filtros)Object.entries(rep.filtros).forEach(([k,v])=>meta.push(['Filtro · '+k,v]));
+    if(rep.kpis&&rep.kpis.length){meta.push([]);meta.push(['Resumen ejecutivo']);rep.kpis.forEach(k=>meta.push([k.label,k.value]));}
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(meta),'Informe');
+    const usados={informe:1};
+    (rep.secciones||[]).forEach((sec,idx)=>{const cols=sec.columnas||[];const aoa=[cols.map(c=>c.label)];(sec.filas||[]).forEach(f=>aoa.push(cols.map(c=>ExportService._fx(f[c.key],c.fmt))));if(sec.totales)aoa.push(cols.map(c=>(c.key in sec.totales)?ExportService._fx(sec.totales[c.key],c.fmt):''));let nm=String(sec.titulo||('Hoja '+(idx+1))).replace(/[\\\/\?\*\[\]:]/g,' ').trim().slice(0,28)||('Hoja '+(idx+1));let base=nm,k=2;while(usados[nm.toLowerCase()]){nm=(base.slice(0,24)+' '+k).trim();k++;}usados[nm.toLowerCase()]=1;XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),nm);});
+    XLSX.writeFile(wb,(rep.archivo||'Informe')+'.xlsx');
+  },
+  run(rep,fmt){fmt==='pdf'?ExportService.pdf(rep):ExportService.excel(rep);},
+  wire(pdfSel,xlsxSel,builder){const p=$(pdfSel),x=$(xlsxSel);const go=async(fmt)=>{try{const rep=await builder();if(!rep){toastMsg('No hay datos para exportar');return;}toastMsg('Generando '+(fmt==='pdf'?'PDF':'Excel')+'…');ExportService.run(rep,fmt);}catch(e){console.error('export',e);toastMsg('⚠ No se pudo generar (probá en la versión publicada)');}};if(p)p.onclick=()=>go('pdf');if(x)x.onclick=()=>go('excel');}
+};
+
+/* Constructores de descriptor por pantalla (arman el informe desde el modelo YA filtrado) */
+let anaExport=null,puntExport=null,histExport=null;
+const _cNom=[{key:'nombre',label:'Nombre'},{key:'cantidad',label:'Cantidad',fmt:'num'},{key:'pct',label:'%',fmt:'pct'}];
+function _rankPct(obj,tot){return Object.entries(obj).sort((x,y)=>y[1]-x[1]).map(([n,v])=>({nombre:n,cantidad:v,pct:tot?Math.round(v/tot*1000)/10:0}));}
+function repDescriptor(m,tituloOverride){
+  const pedFilas=[];m.pedidos.forEach(({p,lineas})=>{const dt=new Date(p.created_at);const fh=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');lineas.forEach(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);pedFilas.push({numero:'#'+p.numero,operario:p.operario,hora:fh,material:P?P.name:l.producto,medida:l.medida,bolsa:l.color_bolsa||'—',tinta:l.colores===2?(l.tinta+'+'+l.tinta2):(l.tinta||'—'),tipo:l.tipo_tinta||'—',caras:l.caras,colores:l.colores,cantidad:l.cantidad||0});});});
+  return {titulo:tituloOverride||('Producción · jornada '+m.iso),periodo:{label:'Jornada',desde:m.iso,hasta:m.iso},
+    kpis:[{label:'Pedidos',value:m.resumen.pedidos},{label:'Bolsas',value:m.resumen.bolsas.toLocaleString('es-AR')},{label:'Impresiones',value:m.resumen.impresiones.toLocaleString('es-AR')},{label:'Presentes',value:m.resumen.presentes},{label:'Impresores',value:m.resumen.impresores},{label:'Horas normales',value:ExportService.hm(m.resumen.hNormal)},{label:'Horas extras',value:ExportService.hm(m.resumen.hExtra)}],
+    secciones:[
+      {titulo:'Producción por operario',columnas:[{key:'operario',label:'Operario'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'impresiones',label:'Impresiones',fmt:'num'},{key:'pct',label:'%',fmt:'pct'}],filas:m.porOperario},
+      {titulo:'Horas por operario',columnas:[{key:'operario',label:'Operario'},{key:'normal',label:'Normales',fmt:'time'},{key:'extra',label:'Extras',fmt:'time'}],filas:m.personal},
+      {titulo:'Por material',columnas:_cNom,filas:m.porMaterial},
+      {titulo:'Por medida',columnas:_cNom,filas:m.porMedida},
+      {titulo:'Color de bolsa',columnas:_cNom,filas:m.porColorBolsa},
+      {titulo:'Color de tinta',columnas:_cNom,filas:m.porColorTinta},
+      {titulo:'Combinaciones',columnas:[{key:'combo',label:'Combinación'},{key:'cantidad',label:'Cantidad',fmt:'num'}],filas:m.combinaciones},
+      {titulo:'Pedidos del día',columnas:[{key:'numero',label:'N°'},{key:'operario',label:'Operario'},{key:'hora',label:'Hora'},{key:'material',label:'Material'},{key:'medida',label:'Medida'},{key:'bolsa',label:'Color bolsa'},{key:'tinta',label:'Tinta'},{key:'tipo',label:'Tipo tinta'},{key:'caras',label:'Caras'},{key:'colores',label:'Colores'},{key:'cantidad',label:'Cantidad',fmt:'num'}],filas:pedFilas}
+    ],archivo:(tituloOverride?'Pedidos_':'Produccion_')+m.iso};
+}
+function horDescriptor(m){
+  const resumen=m.empleados.map(e=>({empleado:e.empleado,dias:e.diasTrab,normal:e.totNormal,extra:e.totExtra,total:e.totMin}));
+  const totN=m.empleados.reduce((s,e)=>s+e.totNormal,0),totE=m.empleados.reduce((s,e)=>s+e.totExtra,0);
+  const detalle=[];m.empleados.forEach(e=>e.dias.forEach(d=>{const bl=eventosABloques(d.eventos||[]).map(b=>`${b.entrada||'—'}-${b.salida||'—'}`).join(' · ');detalle.push({empleado:e.empleado,fecha:d.fecha,tipo:d.tipo,estado:d.estado,bloques:bl,normal:d.normal,extra:d.extra,total:d.worked});}));
+  return {titulo:'Horas del personal',periodo:{label:m.label,desde:m.desde,hasta:m.hasta},filtros:{Empleado:(m.emp&&m.emp!=='__all__')?m.emp:'Todos'},
+    kpis:[{label:'Empleados',value:m.empleados.length},{label:'Horas normales',value:ExportService.hm(totN)},{label:'Horas extras',value:ExportService.hm(totE)},{label:'Total',value:ExportService.hm(totN+totE)}],
+    secciones:[
+      {titulo:'Resumen por empleado',columnas:[{key:'empleado',label:'Empleado'},{key:'dias',label:'Días',fmt:'num'},{key:'normal',label:'Normales',fmt:'time'},{key:'extra',label:'Extras',fmt:'time'},{key:'total',label:'Total',fmt:'time'}],filas:resumen,totales:{empleado:'Total',normal:totN,extra:totE,total:totN+totE}},
+      {titulo:'Detalle diario',columnas:[{key:'empleado',label:'Empleado'},{key:'fecha',label:'Fecha'},{key:'tipo',label:'Tipo día'},{key:'estado',label:'Estado'},{key:'bloques',label:'Bloques'},{key:'normal',label:'Normales',fmt:'time'},{key:'extra',label:'Extras',fmt:'time'},{key:'total',label:'Total',fmt:'time'}],filas:detalle}
+    ],archivo:'Horas_'+m.desde+'_'+m.hasta};
+}
+function anaDescriptor(a,rango,peds){
+  const desde=(rango[0]||'').slice(0,10),hasta=hoyISO();
+  const byDay={};(peds||[]).forEach(p=>{const d=new Date(p.created_at);const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');const q=(p.est_lineas||[]).reduce((s,l)=>s+(l.cantidad||0),0);byDay[k]=(byDay[k]||0)+q;});
+  const tend=Object.keys(byDay).sort().map(k=>({fecha:k,bolsas:byDay[k]}));
+  const cbFilas=[];GRUPO_BOLSA.forEach(([key,lbl])=>{const o=a.colBg[key];if(!o)return;Object.entries(o).sort((x,y)=>y[1]-x[1]).forEach(([col,v])=>cbFilas.push({grupo:lbl,color:col,cantidad:v,pct:a.bolsas?Math.round(v/a.bolsas*1000)/10:0}));});
+  const atF=a.aguaIF+a.solvIF;
+  return {titulo:'Analítica de producción',periodo:{label:rango[2],desde,hasta},
+    kpis:[{label:'Bolsas',value:a.bolsas.toLocaleString('es-AR')},{label:'Impresiones',value:a.impresiones.toLocaleString('es-AR')},{label:'Pedidos',value:a.pedidos},{label:'% al agua (friselina)',value:(atF?Math.round(a.aguaIF/atF*100):0)+'%'}],
+    secciones:[
+      {titulo:'Producción por operario',columnas:[{key:'nombre',label:'Operario'},{key:'cantidad',label:'Bolsas',fmt:'num'},{key:'pct',label:'%',fmt:'pct'}],filas:_rankPct(a.ops,a.bolsas)},
+      {titulo:'Materiales',columnas:_cNom,filas:_rankPct(a.mat,a.bolsas)},
+      {titulo:'Medidas',columnas:_cNom,filas:_rankPct(a.med,a.bolsas)},
+      {titulo:'Color de bolsa por tipo',columnas:[{key:'grupo',label:'Tipo'},{key:'color',label:'Color'},{key:'cantidad',label:'Cantidad',fmt:'num'},{key:'pct',label:'%',fmt:'pct'}],filas:cbFilas},
+      {titulo:'Color de tinta',columnas:_cNom,filas:_rankPct(a.colT,a.bolsas)},
+      {titulo:'Impresiones por tinta',columnas:[{key:'ambito',label:'Ámbito'},{key:'agua',label:'Al agua',fmt:'num'},{key:'solvente',label:'Solvente',fmt:'num'}],filas:[{ambito:'Todo el taller',agua:a.aguaI,solvente:a.solvI},{ambito:'Solo friselina',agua:a.aguaIF,solvente:a.solvIF}]},
+      {titulo:'Combinaciones',columnas:[{key:'nombre',label:'Combinación'},{key:'cantidad',label:'Cantidad',fmt:'num'}],filas:Object.entries(a.comb).sort((x,y)=>y[1]-x[1]).slice(0,25).map(([k,v])=>({nombre:k,cantidad:v}))},
+      {titulo:'Tendencia diaria',columnas:[{key:'fecha',label:'Fecha'},{key:'bolsas',label:'Bolsas',fmt:'num'}],filas:tend,grafico:{tipo:'barras',xKey:'fecha',yKey:'bolsas'}}
+    ],archivo:'Analitica_'+String(rango[2]||'').replace(/\s+/g,'-')+'_'+hasta};
+}
+function puntDescriptor(d){
+  const rank=(obj)=>Object.entries(obj).sort((x,y)=>y[1]-x[1]).map(([n,v])=>({nombre:n,puntos:Math.round(v)}));
+  return {titulo:'Puntos de producción (calibración)',periodo:{label:d.label},
+    kpis:[{label:'Puntos',value:Math.round(d.tot).toLocaleString('es-AR')},{label:'Impresiones',value:d.imp.toLocaleString('es-AR')},{label:'Pedidos',value:d.peds}],
+    secciones:[
+      {titulo:'Puntos por operario',columnas:[{key:'nombre',label:'Operario'},{key:'puntos',label:'Puntos',fmt:'num'}],filas:rank(d.ops)},
+      {titulo:'Puntos por medida',columnas:[{key:'nombre',label:'Medida'},{key:'puntos',label:'Puntos',fmt:'num'}],filas:rank(d.med)},
+      {titulo:'Puntos por material',columnas:[{key:'nombre',label:'Material'},{key:'puntos',label:'Puntos',fmt:'num'}],filas:rank(d.mat)}
+    ],archivo:'Puntos_'+String(d.label||'').replace(/\s+/g,'-')};
+}
+function histMesDescriptor(y,mo,peds){
+  const a=analizarPedidos(peds);
+  const byDay={};(peds||[]).forEach(p=>{const d=new Date(p.created_at);const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');const o=byDay[k]=byDay[k]||{pedidos:0,bolsas:0,impresiones:0};o.pedidos++;o.bolsas+=(p.est_lineas||[]).reduce((s,l)=>s+(l.cantidad||0),0);o.impresiones+=impresionesDe(p);});
+  const dias=Object.keys(byDay).sort().map(k=>({fecha:k,pedidos:byDay[k].pedidos,bolsas:byDay[k].bolsas,impresiones:byDay[k].impresiones}));
+  const desde=y+'-'+String(mo+1).padStart(2,'0')+'-01',finD=new Date(y,mo+1,0).getDate(),hasta=y+'-'+String(mo+1).padStart(2,'0')+'-'+String(finD).padStart(2,'0');
+  return {titulo:'Historial de producción · '+H_MES[mo]+' '+y,periodo:{label:H_MES[mo]+' '+y,desde,hasta},
+    kpis:[{label:'Días con producción',value:dias.length},{label:'Pedidos',value:a.pedidos},{label:'Bolsas',value:a.bolsas.toLocaleString('es-AR')},{label:'Impresiones',value:a.impresiones.toLocaleString('es-AR')}],
+    secciones:[
+      {titulo:'Producción por día',columnas:[{key:'fecha',label:'Fecha'},{key:'pedidos',label:'Pedidos',fmt:'num'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'impresiones',label:'Impresiones',fmt:'num'}],filas:dias,grafico:{tipo:'barras',xKey:'fecha',yKey:'bolsas'}},
+      {titulo:'Por operario',columnas:[{key:'nombre',label:'Operario'},{key:'cantidad',label:'Bolsas',fmt:'num'},{key:'pct',label:'%',fmt:'pct'}],filas:_rankPct(a.ops,a.bolsas)},
+      {titulo:'Materiales',columnas:_cNom,filas:_rankPct(a.mat,a.bolsas)},
+      {titulo:'Medidas',columnas:_cNom,filas:_rankPct(a.med,a.bolsas)},
+      {titulo:'Color de tinta',columnas:_cNom,filas:_rankPct(a.colT,a.bolsas)}
+    ],archivo:'Historial_'+y+'-'+String(mo+1).padStart(2,'0')};
+}
+async function _hoyModelo(){const t=new Date();const start=new Date(t.getFullYear(),t.getMonth(),t.getDate()).toISOString();const peds=await fetchPedidosRango(start,null);return ReportService.modelo(t,peds);}
+ExportService.wire('#anaPdf','#anaXls',()=>anaExport?anaDescriptor(anaExport.a,anaExport.rango,anaExport.peds):null);
+ExportService.wire('#puntPdf','#puntXls',()=>puntExport?puntDescriptor(puntExport):null);
+ExportService.wire('#histPdf','#histXls',()=>histExport?histMesDescriptor(histExport.y,histExport.m,histExport.peds):null);
+ExportService.wire('#pedPdf','#pedXls',async()=>repDescriptor(await _hoyModelo(),'Pedidos del día'));
+ExportService.wire('#adPdf','#adXls',async()=>repDescriptor(await _hoyModelo(),'Producción del día'));
 async function generarReporte(tipo){
   $('#ovReporte').classList.remove('on');
   if(!jorActual.fecha)return;
@@ -1151,7 +1243,7 @@ const HorasService={
   hm(min){return Math.floor(min/60)+'h '+String(Math.round(min%60)).padStart(2,'0')+'m';},
   hdec(min){return Math.round(min/60*100)/100;},
   async modelo(desde,hasta,emp,lbl){
-    const res={desde,hasta,label:lbl,generado:new Date(),empleados:[]};
+    const res={desde,hasta,label:lbl,emp,generado:new Date(),empleados:[]};
     if(!db)return res;
     try{
       let q=db.from('est_fichajes').select('*').gte('fecha',desde).lte('fecha',hasta);
@@ -1172,32 +1264,8 @@ const HorasService={
     }catch(e){console.error('HorasService',e);}
     return res;
   },
-  pdf(m){
-    const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});const W=doc.internal.pageSize.getWidth(),Hp=doc.internal.pageSize.getHeight();
-    doc.setFillColor(34,34,34);doc.rect(0,0,W,64,'F');
-    doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('Horas del Personal',40,30);
-    doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(255,193,7);doc.text('Respaldo de liquidación',40,48);
-    doc.setTextColor(255,255,255);doc.setFontSize(9);doc.text(m.label+': '+m.desde+' a '+m.hasta,W-40,30,{align:'right'});doc.text('Generado: '+m.generado.toLocaleString('es-AR'),W-40,46,{align:'right'});
-    let y=88;doc.setTextColor(34,34,34);
-    doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text('Resumen del período',40,y);
-    doc.autoTable({startY:y+6,theme:'grid',styles:{fontSize:9,cellPadding:4},headStyles:{fillColor:[245,245,245],textColor:[34,34,34]},head:[['Empleado','Días','Hs normales','Hs extras','Total']],body:m.empleados.map(e=>[e.empleado,e.diasTrab,HorasService.hm(e.totNormal),HorasService.hm(e.totExtra),HorasService.hm(e.totMin)])});
-    y=doc.lastAutoTable.finalY+18;
-    m.empleados.forEach(e=>{if(y>Hp-100){doc.addPage();y=48;}doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(34,34,34);doc.text(e.empleado,40,y);
-      doc.autoTable({startY:y+6,theme:'striped',styles:{fontSize:9,cellPadding:4},headStyles:{fillColor:[255,193,7],textColor:[34,34,34]},head:[['Fecha','Tipo','Normales','Extras','Total']],body:e.dias.map(d=>[d.fecha,d.tipo,HorasService.hm(d.normal),HorasService.hm(d.extra),HorasService.hm(d.worked)]),foot:[['','Total',HorasService.hm(e.totNormal),HorasService.hm(e.totExtra),HorasService.hm(e.totMin)]],footStyles:{fillColor:[240,240,240],textColor:[34,34,34],fontStyle:'bold'}});
-      y=doc.lastAutoTable.finalY+16;});
-    const pages=doc.internal.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(140,140,140);doc.text('Horas del Personal · respaldo de liquidación · '+m.generado.toLocaleString('es-AR'),40,Hp-20);doc.text('Pág. '+i+'/'+pages,W-40,Hp-20,{align:'right'});}
-    doc.save('Horas_'+m.desde+'_'+m.hasta+'.pdf');
-  },
-  excel(m){
-    const XLSX=window.XLSX;const wb=XLSX.utils.book_new();
-    const resumen=[['Horas del Personal — respaldo de liquidación'],['Período',m.label+' ('+m.desde+' a '+m.hasta+')'],['Generado',m.generado.toLocaleString('es-AR')],[],['Empleado','Días','Hs normales','Hs extras','Total (hs)']];
-    m.empleados.forEach(e=>resumen.push([e.empleado,e.diasTrab,HorasService.hdec(e.totNormal),HorasService.hdec(e.totExtra),HorasService.hdec(e.totMin)]));
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(resumen),'Resumen');
-    const det=[['Empleado','Fecha','Tipo día','Hs normales','Hs extras','Total (hs)']];
-    m.empleados.forEach(e=>e.dias.forEach(d=>det.push([e.empleado,d.fecha,d.tipo,HorasService.hdec(d.normal),HorasService.hdec(d.extra),HorasService.hdec(d.worked)])));
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(det),'Detalle');
-    XLSX.writeFile(wb,'Horas_'+m.desde+'_'+m.hasta+'.xlsx');
-  }
+  pdf(m){ExportService.pdf(horDescriptor(m));},
+  excel(m){ExportService.excel(horDescriptor(m));}
 };
 let horModelo=null,horRango='semana';
 $('#horBtn').onclick=()=>{const s=$('#horEmp');s.innerHTML='<option value="__all__">Todos los empleados</option>'+EQUIPO.map(n=>`<option value="${n}">${n}</option>`).join('');horModelo=null;$('#horRes').innerHTML='';$('#horExport').style.display='none';show('scHoras');};
@@ -1375,6 +1443,7 @@ async function renderPuntos(){
   const peds=await fetchPedidosRango(start,null);
   let tot=0,imp=0;const ops={},med={},mat={};
   peds.forEach(p=>{const pp=puntosDe(p);tot+=pp;imp+=impresionesDe(p);ops[p.operario]=(ops[p.operario]||0)+pp;(p.est_lineas||[]).forEach(l=>{const pl=(l.puntos!=null?Number(l.puntos):0);med[l.medida]=(med[l.medida]||0)+pl;const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;mat[nm]=(mat[nm]||0)+pl;});});
+  puntExport={label:(puntPeriodo==='semana'?'Semana':puntPeriodo==='mes'?'Mes':'Todo'),tot,imp,peds:peds.length,ops,med,mat};
   $('#puntTot').textContent=Math.round(tot).toLocaleString('es-AR');$('#puntImp').textContent=imp.toLocaleString('es-AR');$('#puntPed').textContent=peds.length;
   $('#puntOps').innerHTML=rankBarsN(redondearObj(ops),null,12);
   $('#puntMed').innerHTML=rankBarsN(redondearObj(med),null,14);
