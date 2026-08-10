@@ -340,6 +340,7 @@
   .accb.copy{background:var(--ink);color:#fff;border-color:var(--ink)}
   .accb.wa{background:#25D366;color:#fff;border-color:#25D366}
   .accb.rev{color:#C0392B}
+  .resprev{max-width:100%;border-radius:14px;border:1px solid var(--line2)}
 
   /* ── Portal del empleado (solo lectura) ── */
   .portalmode .screen:not(#scPortal){display:none!important}
@@ -432,6 +433,7 @@
       <button class="histbtn" id="cfgBtn">Configuración de puntos ⚙️ ›</button>
       <button class="histbtn" id="avBtn">Centro de avisos 📢 ›</button>
       <button class="histbtn" id="accBtn">Accesos al personal 🔗 ›</button>
+      <button class="histbtn" id="resBtn">Resumen para compartir 🖼️ ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
@@ -548,6 +550,33 @@
       <div class="adhead"><div><div class="adttl">Accesos al personal</div><div class="adsub">links de consulta · solo lectura</div></div><button class="adexit" id="accBack">‹ Volver</button></div>
       <div class="adcard"><div class="adbd" style="font-size:13px;color:var(--gray);line-height:1.5">Cada empleado tiene un link personal para ver <b>solo sus</b> horas y extras. Copialo y mandáselo por WhatsApp. Podés regenerarlo (invalida el anterior) o revocarlo cuando quieras.</div></div>
       <div id="accList"></div>
+    </div>
+
+    <!-- RESUMEN PARA COMPARTIR (admin) -->
+    <div class="screen" id="scResumen">
+      <div class="adhead"><div><div class="adttl">Resumen para compartir</div><div class="adsub">imagen individual · WhatsApp</div></div><button class="adexit" id="resBack">‹ Volver</button></div>
+      <div class="adcard"><div class="adbd">
+        <label class="hlbl">Empleado</label>
+        <select id="resEmp" class="hsel"></select>
+        <label class="hlbl">Período</label>
+        <div class="tabs" id="resTabs">
+          <button data-r="hoy">Hoy</button>
+          <button data-r="semana" class="on">Semana</button>
+          <button data-r="q1">1ª quinc.</button>
+          <button data-r="q2">2ª quinc.</button>
+          <button data-r="mes">Mes</button>
+          <button data-r="custom">Person.</button>
+        </div>
+        <div id="resCustom" style="display:none">
+          <div class="hrow"><span>Desde</span><input type="date" id="resDesde"></div>
+          <div class="hrow"><span>Hasta</span><input type="date" id="resHasta"></div>
+        </div>
+        <button class="hero-btn half dark" id="resGen" style="min-height:52px;font-size:16px;width:100%;margin-top:10px">🖼️ Generar resumen</button>
+      </div></div>
+      <div id="resOut" style="display:none">
+        <div class="adcard"><div class="adbd" style="text-align:center"><img id="resImg" class="resprev" alt="Resumen del empleado"></div></div>
+        <div class="expbar"><button class="expbtn pdf" id="resShare">📤 Compartir</button><button class="expbtn" id="resDl">⬇️ Descargar</button></div>
+      </div>
     </div>
 
     <!-- PORTAL DEL EMPLEADO (solo lectura, por token) -->
@@ -1884,6 +1913,96 @@ async function renderAccesos(){
 }
 async function accGuardar(op,token){try{await db.from('est_accesos').upsert({operario:op,token,activo:true,updated_at:new Date().toISOString()},{onConflict:'operario'});await dbInsert('auditoria',{id:uuid(),entidad:'acceso',entidad_id:op,accion:'regenerar',detalle:{},usuario:adminWho||'admin'});toastMsg('✓ Link generado');renderAccesos();}catch(e){console.error(e);toastMsg('⚠ No se pudo generar');}}
 async function accSetActivo(op,activo){try{await db.from('est_accesos').update({activo,updated_at:new Date().toISOString()}).eq('operario',op);await dbInsert('auditoria',{id:uuid(),entidad:'acceso',entidad_id:op,accion:activo?'reactivar':'revocar',detalle:{},usuario:adminWho||'admin'});toastMsg(activo?'✓ Reactivado':'Acceso revocado');renderAccesos();}catch(e){console.error(e);toastMsg('⚠ No se pudo actualizar');}}
+
+/* ── Resumen para compartir (admin · imagen individual para WhatsApp) ── */
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function _cortar(ctx,txt,maxW){let t=txt;while(ctx.measureText(t).width>maxW&&t.length>4)t=t.slice(0,-2);return t===txt?txt:t+'…';}
+function _wrap(ctx,text,x,y,maxW,lh){const words=String(text).split(' ');let line='',yy=y;words.forEach(w=>{const test=line?line+' '+w:w;if(ctx.measureText(test).width>maxW&&line){ctx.fillText(line,x,yy);line=w;yy+=lh;}else line=test;});if(line)ctx.fillText(line,x,yy);return yy;}
+function dibujarResumen(d){
+  const W=1080,CARDX=40,CARDW=W-80,IN=46;
+  const ink='#1e1e1e',amber='#FFC107',gray='#8C8C8C',red='#C0392B',line='#ECECEC',mut='#555555';
+  const F=(w,s)=>w+' '+s+'px system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif';
+  const rowH=60,titleGap=60,padY=38,gap=26,bandH=312,discH=200;
+  const secH=(n,total)=>padY+titleGap+n*rowH+(total?24+108:0)+padY;
+  const cards=[{title:'HORAS',rows:d.horas.rows,total:{label:'TOTAL HORAS',val:d.horas.total}}];
+  if(d.prod)cards.push({title:'PRODUCCIÓN',rows:[{label:'Bolsas',val:d.prod.bolsas},{label:'Impresiones',val:d.prod.imp},{label:'Puntos',val:d.prod.pts}]});
+  cards.push({title:'LIQUIDACIÓN ACUMULADA',rows:d.liq.lines,total:{label:'TOTAL ACUMULADO',val:d.liq.total,big:true},accent:true});
+  let H=bandH+gap;cards.forEach(c=>H+=secH(c.rows.length,!!c.total)+gap);H+=discH+24;
+  const cv=document.createElement('canvas');cv.width=W;cv.height=Math.round(H);
+  const ctx=cv.getContext('2d');ctx.textBaseline='alphabetic';
+  ctx.fillStyle='#FAFAFA';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=ink;ctx.fillRect(0,0,W,bandH);ctx.fillStyle=amber;ctx.fillRect(0,bandH-9,W,9);
+  ctx.fillStyle=amber;ctx.font=F('800',46);ctx.fillText('GRAFI-PACK',CARDX+6,100);
+  ctx.fillStyle='rgba(255,255,255,.72)';ctx.font=F('700',26);ctx.fillText('RESUMEN PERSONAL',CARDX+6,146);
+  ctx.fillStyle='#fff';ctx.font=F('800',60);ctx.fillText(_cortar(ctx,String(d.nombre).toUpperCase(),CARDW-12),CARDX+6,226);
+  ctx.fillStyle='rgba(255,255,255,.85)';ctx.font=F('400',30);ctx.fillText(_cortar(ctx,'Período: '+d.periodo,CARDW-12),CARDX+6,274);
+  let y=bandH+gap;
+  cards.forEach(c=>{
+    const h=secH(c.rows.length,!!c.total);
+    ctx.fillStyle='#fff';roundRect(ctx,CARDX,y,CARDW,h,26);ctx.fill();
+    ctx.strokeStyle=line;ctx.lineWidth=1;roundRect(ctx,CARDX,y,CARDW,h,26);ctx.stroke();
+    if(c.accent){ctx.fillStyle=amber;roundRect(ctx,CARDX,y,12,h,26);ctx.fill();ctx.fillStyle='#fff';ctx.fillRect(CARDX+12,y+10,18,h-20);}
+    let cy=y+padY+40;
+    ctx.textAlign='left';ctx.fillStyle=gray;ctx.font=F('700',27);ctx.fillText(c.title,CARDX+IN,cy);cy+=titleGap-14;
+    c.rows.forEach(r=>{
+      ctx.textAlign='left';ctx.fillStyle=mut;ctx.font=F('400',35);ctx.fillText(_cortar(ctx,r.label,CARDW*0.58),CARDX+IN,cy);
+      ctx.textAlign='right';ctx.fillStyle=r.neg?red:ink;ctx.font=F('700',37);ctx.fillText(r.val,CARDX+CARDW-IN,cy);
+      cy+=rowH;
+    });
+    if(c.total){const ly=cy;ctx.strokeStyle=line;ctx.beginPath();ctx.moveTo(CARDX+IN,ly-16);ctx.lineTo(CARDX+CARDW-IN,ly-16);ctx.stroke();
+      ctx.textAlign='left';ctx.fillStyle=ink;ctx.font=F('800',c.total.big?42:40);ctx.fillText(c.total.label,CARDX+IN,ly+52);
+      ctx.textAlign='right';ctx.fillStyle=c.total.big?'#0F7A4F':ink;ctx.font=F('800',c.total.big?58:50);ctx.fillText(c.total.val,CARDX+CARDW-IN,ly+56);
+    }
+    ctx.textAlign='left';y+=h+gap;
+  });
+  ctx.fillStyle='#FFF8E1';roundRect(ctx,CARDX,y,CARDW,discH,20);ctx.fill();ctx.strokeStyle='#F2D98A';ctx.stroke();
+  ctx.fillStyle='#7A5B00';ctx.font=F('800',30);ctx.fillText('Liquidación acumulada hasta el momento',CARDX+IN,y+56);
+  ctx.fillStyle='#6b6b6b';ctx.font=F('400',26);_wrap(ctx,'Información correspondiente al período seleccionado. La liquidación definitiva puede variar por ajustes posteriores.',CARDX+IN,y+100,CARDW-2*IN,36);
+  ctx.fillStyle=gray;ctx.font=F('400',26);ctx.fillText('Generado el '+d.gen,CARDX+IN,y+discH-26);
+  return cv;
+}
+function rangoDe(key){const now=new Date();const y=now.getFullYear(),mo=now.getMonth();const iso=z=>z.getFullYear()+'-'+String(z.getMonth()+1).padStart(2,'0')+'-'+String(z.getDate()).padStart(2,'0');
+  if(key==='hoy')return[iso(now),iso(now)];
+  if(key==='semana'){const off=(now.getDay()+6)%7;return[iso(new Date(y,mo,now.getDate()-off)),iso(now)];}
+  if(key==='q1')return[iso(new Date(y,mo,1)),iso(new Date(y,mo,15))];
+  if(key==='q2')return[iso(new Date(y,mo,16)),iso(new Date(y,mo+1,0))];
+  if(key==='mes')return[iso(new Date(y,mo,1)),iso(new Date(y,mo+1,0))];
+  return[$('#resDesde').value,$('#resHasta').value];}
+function fmtFechaLarga(iso){const p=iso.split('-').map(Number);return p[2]+' de '+H_MES[p[1]-1].toLowerCase()+' de '+p[0];}
+function fmtPeriodo(desde,hasta){if(desde===hasta)return fmtFechaLarga(desde);const a=desde.split('-'),b=hasta.split('-');if(a[0]===b[0]&&a[1]===b[1])return Number(a[2])+' al '+Number(b[2])+' de '+H_MES[+a[1]-1].toLowerCase()+' de '+a[0];return fmtFechaLarga(desde)+' al '+fmtFechaLarga(hasta);}
+let resPeriodo='semana',resLastBlob=null;
+$('#resBtn')&&($('#resBtn').onclick=()=>{$('#resEmp').innerHTML=EQUIPO.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');$('#resOut').style.display='none';show('scResumen');});
+$('#resBack')&&($('#resBack').onclick=()=>show('scAdmin',false));
+$('#resTabs')&&$('#resTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...$('#resTabs').children].forEach(x=>x.classList.toggle('on',x===b));resPeriodo=b.dataset.r;$('#resCustom').style.display=resPeriodo==='custom'?'block':'none';});
+$('#resGen')&&($('#resGen').onclick=async()=>{
+  const emp=$('#resEmp').value;if(!emp){toastMsg('Elegí un empleado');return;}
+  const [desde,hasta]=rangoDe(resPeriodo);if(!desde||!hasta){toastMsg('Elegí las fechas');return;}
+  $('#resGen').disabled=true;$('#resGen').textContent='Generando…';
+  try{
+    const m=await LiqService.modelo(desde,hasta,'');
+    const e=m.empleados.find(x=>x.empleado===emp)||{empleado:emp,totNormal:0,totExtra:0,totSabado:0,feriadosTrab:0,feriadosNoTrab:0,pagoNormal:0,pagoExtra:0,pagoSabado:0,pagoFeriado:0,descTotal:0,total:0};
+    let bolsas=0,imp=0,pts=0;const peds=await fetchPedidosRango(desde+'T00:00:00',hasta+'T23:59:59');
+    peds.filter(p=>p.operario===emp).forEach(p=>{bolsas+=(p.est_lineas||[]).reduce((s,l)=>s+(l.cantidad||0),0);imp+=impresionesDe(p);pts+=puntosDe(p);});
+    const hRows=[{label:'Horas normales',val:HorasService.hm(e.totNormal)},{label:'Horas extras',val:HorasService.hm(e.totExtra)}];
+    if(e.totSabado>0)hRows.push({label:'Sábados',val:HorasService.hm(e.totSabado)});
+    const liqLines=[];
+    if(e.totNormal>0)liqLines.push({label:'Horas normales',val:money(e.pagoNormal)});
+    if(e.totExtra>0)liqLines.push({label:'Horas extras',val:money(e.pagoExtra)});
+    if(e.totSabado>0)liqLines.push({label:'Sábados trabajados',val:money(e.pagoSabado)});
+    if((e.feriadosTrab+e.feriadosNoTrab)>0)liqLines.push({label:'Feriados ('+(e.feriadosTrab+e.feriadosNoTrab)+')',val:money(e.pagoFeriado)});
+    if(e.descTotal>0)liqLines.push({label:'Descuentos',val:'− '+money(e.descTotal),neg:true});
+    if(!liqLines.length)liqLines.push({label:'Sin conceptos en el período',val:money(0)});
+    const data={nombre:emp,periodo:fmtPeriodo(desde,hasta),
+      horas:{rows:hRows,total:HorasService.hm(e.totNormal+e.totExtra+e.totSabado)},
+      prod:(bolsas||imp||pts)?{bolsas:bolsas.toLocaleString('es-AR'),imp:imp.toLocaleString('es-AR'),pts:Math.round(pts).toLocaleString('es-AR')}:null,
+      liq:{lines:liqLines,total:money(e.total)},gen:new Date().toLocaleDateString('es-AR')};
+    const cv=dibujarResumen(data);
+    cv.toBlob(b=>{if(resLastBlob)try{URL.revokeObjectURL($('#resImg').src);}catch(_){}resLastBlob=b;$('#resImg').src=URL.createObjectURL(b);$('#resOut').style.display='block';},'image/png');
+  }catch(err){console.error('resumen',err);toastMsg('⚠ No se pudo generar el resumen');}
+  $('#resGen').disabled=false;$('#resGen').textContent='🖼️ Generar resumen';
+});
+$('#resDl')&&($('#resDl').onclick=()=>{if(!resLastBlob)return;const a=document.createElement('a');a.href=URL.createObjectURL(resLastBlob);a.download='Resumen_'+String($('#resEmp').value||'empleado').replace(/\s+/g,'-')+'.png';document.body.appendChild(a);a.click();a.remove();});
+$('#resShare')&&($('#resShare').onclick=async()=>{if(!resLastBlob)return;const file=new File([resLastBlob],'resumen.png',{type:'image/png'});try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Resumen personal',text:'Resumen de '+$('#resEmp').value});}else{toastMsg('Tu dispositivo no permite compartir la imagen; usá Descargar');}}catch(e){if(e&&e.name!=='AbortError'){console.error(e);}}});
 
 function portalClasificar(fecha,w){const dt=new Date(fecha+'T12:00:00');const dow=dt.getDay();const fer=isFeriado(dt);const sab=(dow===6),dom=(dow===0);let norm=0,ext=0,sabm=0;if(w>0){if(fer){ext=w;}else if(sab){sabm=w;}else if(dom){ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}}return {worked:w,normal:norm,extra:ext+sabm,tipo:fer?'feriado':(sab?'sábado':(dom?'domingo':'normal'))};}
 async function initPortal(token){
