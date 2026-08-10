@@ -333,6 +333,32 @@
   .liqsub{font-weight:800;font-size:14px;margin:14px 0 6px;color:var(--ink)}
   .miniadd{border:1px solid var(--line2);background:var(--surf);border-radius:9px;padding:5px 10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
   #descObs{width:100%;font-family:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--line2);border-radius:11px;box-sizing:border-box}
+
+  /* ── Accesos al personal (admin) ── */
+  .accbtns{display:flex;flex-wrap:wrap;gap:8px}
+  .accb{flex:1 1 auto;min-width:120px;font-family:inherit;font-weight:700;font-size:14px;padding:11px;border-radius:11px;cursor:pointer;border:1px solid var(--line2);background:var(--surf);color:var(--ink)}
+  .accb.copy{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .accb.wa{background:#25D366;color:#fff;border-color:#25D366}
+  .accb.rev{color:#C0392B}
+
+  /* ── Portal del empleado (solo lectura) ── */
+  .portalmode .screen:not(#scPortal){display:none!important}
+  #scPortal{max-width:520px;margin:0 auto;padding:16px 16px 30px}
+  .pthead{padding:8px 2px 14px}
+  .ptname{font-size:23px;font-weight:800}
+  .ptsub{font-size:13px;color:var(--gray)}
+  .ptcard{background:var(--surf);border:1px solid var(--line2);border-radius:16px;padding:16px;margin-bottom:12px}
+  .ptcard h3{margin:0 0 10px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--gray)}
+  .ptrow,.ptprod{display:flex;gap:10px}
+  .ptbox{flex:1;text-align:center;background:#F7F7F7;border-radius:12px;padding:14px 8px}
+  .ptbox .n{font-size:25px;font-weight:800;line-height:1.1}
+  .ptbox .l{font-size:12px;color:var(--gray);margin-top:3px}
+  .ptbox.extra .n{color:#B8860B}
+  .ptprod .ptbox .n{font-size:19px}
+  .pth{display:flex;justify-content:space-between;padding:9px 2px;border-bottom:1px solid var(--line2);font-size:14px}
+  .pth:last-child{border-bottom:none}
+  .pthx{color:#B8860B;font-weight:700}
+  .ptfoot{text-align:center;color:var(--gray);font-size:12px;padding:12px 0 4px}
 </style>
 </head>
 <body>
@@ -405,6 +431,7 @@
       <button class="histbtn" id="puntBtn">Puntos de producción 🧪 ›</button>
       <button class="histbtn" id="cfgBtn">Configuración de puntos ⚙️ ›</button>
       <button class="histbtn" id="avBtn">Centro de avisos 📢 ›</button>
+      <button class="histbtn" id="accBtn">Accesos al personal 🔗 ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
@@ -515,6 +542,16 @@
       <div class="adcard"><div class="adh">🧪 Colores más usados<small>tinta solvente</small></div><div class="adbd" id="anaColSolv"></div></div>
       <div class="adcard"><div class="adh">Producción por operario</div><div class="adbd" id="anaOps"></div></div>
     </div>
+
+    <!-- ACCESOS AL PERSONAL (admin) -->
+    <div class="screen" id="scAccesos">
+      <div class="adhead"><div><div class="adttl">Accesos al personal</div><div class="adsub">links de consulta · solo lectura</div></div><button class="adexit" id="accBack">‹ Volver</button></div>
+      <div class="adcard"><div class="adbd" style="font-size:13px;color:var(--gray);line-height:1.5">Cada empleado tiene un link personal para ver <b>solo sus</b> horas y extras. Copialo y mandáselo por WhatsApp. Podés regenerarlo (invalida el anterior) o revocarlo cuando quieras.</div></div>
+      <div id="accList"></div>
+    </div>
+
+    <!-- PORTAL DEL EMPLEADO (solo lectura, por token) -->
+    <div class="screen portal" id="scPortal"><div id="portalBody"><div class="admuted" style="padding:30px 16px;text-align:center">Cargando…</div></div></div>
 
     <!-- HORAS DEL PERSONAL -->
     <div class="screen" id="scHoras">
@@ -1825,7 +1862,62 @@ async function pingSupabase(){if(!db)return;try{const r=await db.from('empleados
 window.addEventListener('online',pingSupabase);window.addEventListener('offline',()=>setLinea(false));
 
 /* init */
-refreshHome();scStack.push('scHome');loadEmpleados().then(loadData);loadPuntos();loadAvisos();loadConfigLiq();
+/* ── Portal del empleado (solo lectura, por token) + panel de Accesos (admin) ── */
+function linkPortal(token){return location.origin+location.pathname+'?emp='+token;}
+$('#accBtn')&&($('#accBtn').onclick=()=>{show('scAccesos');renderAccesos();});
+$('#accBack')&&($('#accBack').onclick=()=>show('scAdmin',false));
+async function renderAccesos(){
+  const cont=$('#accList');cont.innerHTML='<div class="admuted" style="padding:16px">Cargando…</div>';
+  let acc={};try{const {data}=await db.from('est_accesos').select('*');(data||[]).forEach(r=>acc[r.operario]=r);}catch(e){console.error('accesos',e);}
+  if(!EQUIPO.length){cont.innerHTML='<div class="admuted" style="padding:16px">No hay empleados cargados.</div>';return;}
+  cont.innerHTML=EQUIPO.map(n=>{const a=acc[n];const estado=!a?'Sin generar':(a.activo?'Activo':'Revocado');
+    return `<div class="adcard"><div class="adh">${esc(n)}<small>Acceso: ${estado}</small></div><div class="adbd"><div class="accbtns">
+      ${a&&a.activo?`<button class="accb copy" data-t="${a.token}">📋 Copiar link</button><button class="accb wa" data-t="${a.token}">🟢 WhatsApp</button>`:''}
+      <button class="accb gen" data-n="${esc(n)}">${a?'♻️ Regenerar':'➕ Generar link'}</button>
+      ${a?(a.activo?`<button class="accb rev" data-n="${esc(n)}">⛔ Revocar</button>`:`<button class="accb rea" data-n="${esc(n)}">✅ Reactivar</button>`):''}
+    </div></div></div>`;}).join('');
+  cont.querySelectorAll('.copy').forEach(b=>b.onclick=async()=>{const url=linkPortal(b.dataset.t);try{await navigator.clipboard.writeText(url);toastMsg('✓ Link copiado');}catch(e){prompt('Copiá el link:',url);}});
+  cont.querySelectorAll('.wa').forEach(b=>b.onclick=()=>window.open('https://wa.me/?text='+encodeURIComponent('Tu link para ver tus horas del taller (solo lectura): '+linkPortal(b.dataset.t)),'_blank'));
+  cont.querySelectorAll('.gen').forEach(b=>b.onclick=()=>accGuardar(b.dataset.n,uuid()));
+  cont.querySelectorAll('.rev').forEach(b=>b.onclick=()=>accSetActivo(b.dataset.n,false));
+  cont.querySelectorAll('.rea').forEach(b=>b.onclick=()=>accSetActivo(b.dataset.n,true));
+}
+async function accGuardar(op,token){try{await db.from('est_accesos').upsert({operario:op,token,activo:true,updated_at:new Date().toISOString()},{onConflict:'operario'});await dbInsert('auditoria',{id:uuid(),entidad:'acceso',entidad_id:op,accion:'regenerar',detalle:{},usuario:adminWho||'admin'});toastMsg('✓ Link generado');renderAccesos();}catch(e){console.error(e);toastMsg('⚠ No se pudo generar');}}
+async function accSetActivo(op,activo){try{await db.from('est_accesos').update({activo,updated_at:new Date().toISOString()}).eq('operario',op);await dbInsert('auditoria',{id:uuid(),entidad:'acceso',entidad_id:op,accion:activo?'reactivar':'revocar',detalle:{},usuario:adminWho||'admin'});toastMsg(activo?'✓ Reactivado':'Acceso revocado');renderAccesos();}catch(e){console.error(e);toastMsg('⚠ No se pudo actualizar');}}
+
+function portalClasificar(fecha,w){const dt=new Date(fecha+'T12:00:00');const dow=dt.getDay();const fer=isFeriado(dt);const sab=(dow===6),dom=(dow===0);let norm=0,ext=0,sabm=0;if(w>0){if(fer){ext=w;}else if(sab){sabm=w;}else if(dom){ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}}return {worked:w,normal:norm,extra:ext+sabm,tipo:fer?'feriado':(sab?'sábado':(dom?'domingo':'normal'))};}
+async function initPortal(token){
+  show('scPortal');
+  try{const {data:fd}=await db.from('est_feriados').select('*');feriadosDB=(fd||[]).map(r=>({fecha:r.fecha,nombre:r.nombre}));}catch(e){}
+  const now=new Date();const isoD=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const today=isoD(now);
+  const weekStart=isoD(new Date(now.getFullYear(),now.getMonth(),now.getDate()-((now.getDay()+6)%7)));
+  const qStart=isoD(new Date(now.getFullYear(),now.getMonth(),now.getDate()<=15?1:16));
+  const desde=[weekStart,qStart].sort()[0];
+  let res=null;
+  try{const {data,error}=await db.rpc('portal_datos',{p_token:token,p_desde:desde,p_hasta:today});if(error)throw error;res=data;}catch(e){console.error('portal',e);}
+  if(!res||!res.operario){$('#portalBody').innerHTML='<div class="ptcard" style="text-align:center;margin-top:30px"><div style="font-size:44px">🔒</div><div style="font-size:16px;font-weight:800;margin:8px 0 4px">Acceso no válido</div><div class="ptsub">Este link no es válido o fue dado de baja. Pedile al administrador que te reenvíe tu link personal.</div></div>';return;}
+  const byDia={};(res.fichajes||[]).forEach(f=>{(byDia[f.fecha]=byDia[f.fecha]||[]).push(f);});
+  const dias={};Object.keys(byDia).forEach(fe=>{const w=workedMinClosed(byDia[fe].map(r=>({tipo:r.tipo,hhmm:r.hora})));dias[fe]=portalClasificar(fe,w);});
+  const sum=(from)=>{let wk=0,no=0,ex=0;Object.keys(dias).forEach(fe=>{if(fe>=from&&fe<=today){wk+=dias[fe].worked;no+=dias[fe].normal;ex+=dias[fe].extra;}});return {worked:wk,normal:no,extra:ex};};
+  const hoy=dias[today]||{worked:0,normal:0,extra:0};const sem=sum(weekStart),qui=sum(qStart);
+  let pB=0,pI=0,pP=0;(res.prod||[]).forEach(p=>{if(p.fecha>=qStart&&p.fecha<=today){pB+=Number(p.bolsas||0);pI+=Number(p.impresiones||0);pP+=Number(p.puntos||0);}});
+  const hist=Object.keys(dias).filter(fe=>fe>=qStart&&fe<=today&&dias[fe].worked>0).sort().reverse();
+  const H=m=>HorasService.hm(m);
+  const box=(n,l,ex)=>`<div class="ptbox${ex?' extra':''}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  $('#portalBody').innerHTML=`
+    <div class="pthead"><div class="ptname">${esc(res.operario)}</div><div class="ptsub">Mis horas · solo lectura</div></div>
+    <div class="ptcard"><h3>Hoy</h3><div class="ptrow">${box(H(hoy.worked),'Trabajadas')}${box(H(hoy.extra),'Extras',1)}</div></div>
+    <div class="ptcard"><h3>Esta semana</h3><div class="ptrow">${box(H(sem.normal),'Normales')}${box(H(sem.extra),'Extras',1)}</div></div>
+    <div class="ptcard"><h3>Quincena</h3><div class="ptrow">${box(H(qui.normal),'Normales')}${box(H(qui.extra),'Extras',1)}</div></div>
+    <div class="ptcard"><h3>Historial · quincena</h3>${hist.length?hist.map(fe=>{const t=dias[fe].tipo;const tag=(t==='feriado'||t==='sábado')?` <small style="color:var(--gray)">${t}</small>`:'';return `<div class="pth"><span>${fe.slice(8)}/${fe.slice(5,7)}${tag}</span><span>${H(dias[fe].worked)} · <span class="pthx">${H(dias[fe].extra)} extra</span></span></div>`;}).join(''):'<div class="ptsub">Sin jornadas registradas en la quincena.</div>'}</div>
+    <div class="ptcard"><h3>Producción · quincena <span style="text-transform:none;font-weight:400;letter-spacing:0">(referencia)</span></h3><div class="ptprod">${box(pB.toLocaleString('es-AR'),'Bolsas')}${box(pI.toLocaleString('es-AR'),'Impresiones')}${box(Math.round(pP).toLocaleString('es-AR'),'Puntos')}</div></div>
+    <div class="ptfoot">Actualizado ${now.toLocaleString('es-AR')}</div>`;
+}
+
+const PORTAL_TOKEN=new URLSearchParams(location.search).get('emp');
+if(PORTAL_TOKEN){document.body.classList.add('portalmode');initPortal(PORTAL_TOKEN);}
+else{refreshHome();scStack.push('scHome');loadEmpleados().then(loadData);loadPuntos();loadAvisos();loadConfigLiq();}
 idbOpen().then(()=>{pingSupabase();actualizarIndicador();setInterval(()=>{pingSupabase();if(enLinea)Offline.sincronizarPendientes();},20000);}).catch(()=>{});
 </script>
 </body>
