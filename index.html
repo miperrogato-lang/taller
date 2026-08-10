@@ -510,7 +510,9 @@
       <div class="adcard"><div class="adh">Combinaciones más producidas<small>material · medida · color</small></div><div class="adbd" id="anaComb"></div></div>
       <div class="adcard"><div class="adh">Impresiones por tinta<small>al agua vs solvente</small></div><div class="adbd"><div class="hlbl">Todo el taller</div><div class="adsplit"><div class="adhalf"><div class="v num" id="anaAgua">0</div><div class="k">Al agua</div><div class="p" id="anaAguaP">—</div></div><div class="adhalf"><div class="v num" id="anaSolv">0</div><div class="k">Solvente Eva Flex</div><div class="p" id="anaSolvP">—</div></div></div><div class="hlbl">Solo friselina</div><div class="adsplit"><div class="adhalf"><div class="v num" id="anaAguaF">0</div><div class="k">Al agua</div><div class="p" id="anaAguaFP">—</div></div><div class="adhalf"><div class="v num" id="anaSolvF">0</div><div class="k">Solvente Eva Flex</div><div class="p" id="anaSolvFP">—</div></div></div></div></div>
       <div class="adcard"><div class="adh">Color de bolsa</div><div class="adbd" id="anaColB"></div></div>
-      <div class="adcard"><div class="adh">Color de tinta</div><div class="adbd" id="anaColT"></div></div>
+      <div class="adcard"><div class="adh">🖌️ Tinta utilizada<small>tinta al agua vs tinta solvente</small></div><div class="adbd" id="anaTintaUso"></div></div>
+      <div class="adcard"><div class="adh">💧 Colores más usados<small>tinta al agua</small></div><div class="adbd" id="anaColAgua"></div></div>
+      <div class="adcard"><div class="adh">🧪 Colores más usados<small>tinta solvente</small></div><div class="adbd" id="anaColSolv"></div></div>
       <div class="adcard"><div class="adh">Producción por operario</div><div class="adbd" id="anaOps"></div></div>
     </div>
 
@@ -731,7 +733,7 @@ try{db=window.supabase.createClient('https://tmouwzrtjbvqyiloyods.supabase.co','
 /* ── datos ── */
 let IMPRESORES=[],EQUIPO=[],EMPLEADOS=[];  // se cargan desde la tabla empleados (Maestro)
 const PRODUCTOS=[
-  {id:'fris',name:'Friselina',solvAuto:false,med:['Palanca autos','15×20 riñón','20×30 riñón','20×40 riñón','30×40 riñón','30×30 asas','30×40 asas','40×40 asas','45×40 asas','60×40 asas']},
+  {id:'fris',name:'Friselina',solvAuto:false,med:['Palanca autos','15×20 riñón','20×30 riñón','20×40 riñón','30×40 riñón','30×30 riñón','30×30 asas','30×40 asas','40×40 asas','45×40 asas','60×40 asas']},
   {id:'poli',name:'Polietileno',solvAuto:true,med:['15×20','20×30','25×35','30×40','35×45','40×50']},
   {id:'lam',name:'Laminadas',solvAuto:false,med:['20×30','30×30','45×40']},
   {id:'ecom',name:'E-Commerce',solvAuto:false,med:['20×35 +solapa','30×45 +solapa','45×55 +solapa']},
@@ -1076,7 +1078,7 @@ function openJornada(dia){
 /* ── Analítica de producción (Etapa 2 · solo lectura · motor de agregación) ── */
 function rankBarsN(obj,sw,n){const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n||10);if(!e.length)return '<div class="admuted">Sin datos en el período.</div>';const max=Math.max(...e.map(x=>x[1]));return e.map(([k,v])=>adBar(k,v,max,'',sw&&sw[k])).join('');}
 function analizarPedidos(pedidos){
-  const mat={},med={},colB={},colBg={fris:{},poli:{},lam:{},otro:{}},colT={},comb={},ops={};let bolsas=0,imp=0,aguaI=0,solvI=0,aguaIF=0,solvIF=0;
+  const mat={},med={},colB={},colBg={fris:{},poli:{},lam:{},otro:{}},colT={},comb={},ops={},colAgua={},colSolv={};let bolsas=0,imp=0,aguaI=0,solvI=0,aguaIF=0,solvIF=0,bolsasAgua=0,bolsasSolv=0;
   (pedidos||[]).forEach(p=>{imp+=impresionesDe(p);(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;
     const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;
     mat[nm]=(mat[nm]||0)+q; med[l.medida]=(med[l.medida]||0)+q;
@@ -1084,10 +1086,14 @@ function analizarPedidos(pedidos){
     if(l.tinta)colT[l.tinta]=(colT[l.tinta]||0)+q;
     if(l.colores===2&&l.tinta2)colT[l.tinta2]=(colT[l.tinta2]||0)+q;
     const li=q*((l.caras)||1)*((l.colores)||1);if(l.tipo_tinta==='Al agua')aguaI+=li;else if(l.tipo_tinta)solvI+=li;if(l.producto==='fris'){if(l.tipo_tinta==='Al agua')aguaIF+=li;else if(l.tipo_tinta)solvIF+=li;}
+    const esAgua=l.tipo_tinta==='Al agua',esSolv=l.tipo_tinta&&l.tipo_tinta!=='Al agua';
+    if(esAgua)bolsasAgua+=q;else if(esSolv)bolsasSolv+=q;
+    const bucket=esAgua?colAgua:(esSolv?colSolv:null);
+    if(bucket){if(l.tinta)bucket[l.tinta]=(bucket[l.tinta]||0)+q;if(l.colores===2&&l.tinta2)bucket[l.tinta2]=(bucket[l.tinta2]||0)+q;}
     const ck=`${nm} ${l.medida} · ${l.color_bolsa||'—'}`;comb[ck]=(comb[ck]||0)+q;
     ops[p.operario]=(ops[p.operario]||0)+q;
   });});
-  return {pedidos:(pedidos||[]).length,bolsas,impresiones:imp,mat,med,colB,colBg,colT,comb,ops,aguaI,solvI,aguaIF,solvIF};
+  return {pedidos:(pedidos||[]).length,bolsas,impresiones:imp,mat,med,colB,colBg,colT,comb,ops,aguaI,solvI,aguaIF,solvIF,bolsasAgua,bolsasSolv,colAgua,colSolv};
 }
 function tendenciaSVG(pedidos){
   const byDay={};(pedidos||[]).forEach(p=>{const d=new Date(p.created_at);const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;const q=(p.est_lineas||[]).reduce((a,l)=>a+(l.cantidad||0),0);byDay[k]=(byDay[k]||0)+q;});
@@ -1104,7 +1110,7 @@ $('#anaTabs').addEventListener('click',e=>{const b=e.target.closest('button');if
 function anaRango(){const now=new Date();if(anaPeriodo==='semana'){const off=(now.getDay()+6)%7;return[new Date(now.getFullYear(),now.getMonth(),now.getDate()-off).toISOString(),null,'Esta semana'];}if(anaPeriodo==='mes'){return[new Date(now.getFullYear(),now.getMonth(),1).toISOString(),null,H_MES[now.getMonth()]+' '+now.getFullYear()];}return['2000-01-01T00:00:00.000Z',null,'Todo el historial'];}
 async function renderAnalitica(){
   const r=anaRango();$('#anaLbl').textContent=r[2];
-  ['anaMat','anaMed','anaComb','anaColB','anaColT','anaOps','anaTend'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
+  ['anaMat','anaMed','anaComb','anaColB','anaColAgua','anaColSolv','anaTintaUso','anaOps','anaTend'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
   const peds=await fetchPedidosRango(r[0],r[1]);const a=analizarPedidos(peds);
   anaExport={a,rango:r,peds};$('#anaBol').textContent=a.bolsas.toLocaleString('es-AR');$('#anaImp').textContent=a.impresiones.toLocaleString('es-AR');$('#anaPed').textContent=a.pedidos;
   $('#anaTend').innerHTML=tendenciaSVG(peds);
@@ -1117,7 +1123,10 @@ async function renderAnalitica(){
   $('#anaAguaP').textContent=at?Math.round(a.aguaI/at*100)+'%':'—';$('#anaSolvP').textContent=at?Math.round(a.solvI/at*100)+'%':'—';
   $('#anaAguaF').textContent=a.aguaIF.toLocaleString('es-AR');$('#anaSolvF').textContent=a.solvIF.toLocaleString('es-AR');
   $('#anaAguaFP').textContent=atF?Math.round(a.aguaIF/atF*100)+'%':'—';$('#anaSolvFP').textContent=atF?Math.round(a.solvIF/atF*100)+'%':'—';
-  $('#anaColT').innerHTML=rankBarsN(a.colT,TINTA_SW,12);
+  const tt=a.bolsasAgua+a.bolsasSolv;
+  $('#anaTintaUso').innerHTML=`<div class="adsplit"><div class="adhalf"><div class="v num">${a.bolsasAgua.toLocaleString('es-AR')}</div><div class="k">Tinta al agua</div><div class="p">${tt?Math.round(a.bolsasAgua/tt*100)+'%':'—'}</div></div><div class="adhalf"><div class="v num">${a.bolsasSolv.toLocaleString('es-AR')}</div><div class="k">Tinta solvente</div><div class="p">${tt?Math.round(a.bolsasSolv/tt*100)+'%':'—'}</div></div></div><div class="cortotal" style="margin-top:10px">Bolsas impresas en total: ${tt.toLocaleString('es-AR')}</div>`;
+  $('#anaColAgua').innerHTML=rankBarsN(a.colAgua,TINTA_SW,12);
+  $('#anaColSolv').innerHTML=rankBarsN(a.colSolv,TINTA_SW,12);
   $('#anaOps').innerHTML=rankBarsN(a.ops,null,10);
 }
 
@@ -1232,7 +1241,9 @@ function anaDescriptor(a,rango,peds){
       {titulo:'Materiales',columnas:_cNom,filas:_rankPct(a.mat,a.bolsas)},
       {titulo:'Medidas',columnas:_cNom,filas:_rankPct(a.med,a.bolsas)},
       {titulo:'Color de bolsa por tipo',columnas:[{key:'grupo',label:'Tipo'},{key:'color',label:'Color'},{key:'cantidad',label:'Cantidad',fmt:'num'},{key:'pct',label:'%',fmt:'pct'}],filas:cbFilas},
-      {titulo:'Color de tinta',columnas:_cNom,filas:_rankPct(a.colT,a.bolsas)},
+      {titulo:'Tinta utilizada',columnas:[{key:'nombre',label:'Tipo de tinta'},{key:'cantidad',label:'Bolsas impresas',fmt:'num'},{key:'pct',label:'%',fmt:'pct'}],filas:(()=>{const tt=a.bolsasAgua+a.bolsasSolv;return [{nombre:'Tinta al agua',cantidad:a.bolsasAgua,pct:tt?Math.round(a.bolsasAgua/tt*1000)/10:0},{nombre:'Tinta solvente',cantidad:a.bolsasSolv,pct:tt?Math.round(a.bolsasSolv/tt*1000)/10:0}];})()},
+      {titulo:'Colores — tinta al agua',columnas:_cNom,filas:_rankPct(a.colAgua,a.bolsasAgua)},
+      {titulo:'Colores — tinta solvente',columnas:_cNom,filas:_rankPct(a.colSolv,a.bolsasSolv)},
       {titulo:'Impresiones por tinta',columnas:[{key:'ambito',label:'Ámbito'},{key:'agua',label:'Al agua',fmt:'num'},{key:'solvente',label:'Solvente',fmt:'num'}],filas:[{ambito:'Todo el taller',agua:a.aguaI,solvente:a.solvI},{ambito:'Solo friselina',agua:a.aguaIF,solvente:a.solvIF}]},
       {titulo:'Combinaciones',columnas:[{key:'nombre',label:'Combinación'},{key:'cantidad',label:'Cantidad',fmt:'num'}],filas:Object.entries(a.comb).sort((x,y)=>y[1]-x[1]).slice(0,25).map(([k,v])=>({nombre:k,cantidad:v}))},
       {titulo:'Tendencia diaria',columnas:[{key:'fecha',label:'Fecha'},{key:'bolsas',label:'Bolsas',fmt:'num'}],filas:tend,grafico:{tipo:'barras',xKey:'fecha',yKey:'bolsas'}}
