@@ -706,8 +706,8 @@
         <div id="confList"></div>
       </div>
       <div class="impbox">
-        <div class="implbl">Impresiones realizadas hoy</div>
-        <button class="impfield num" id="impField">0</button>
+        <div class="implbl">Impresiones de esta carga</div>
+        <button class="impfield num" id="impField" disabled style="opacity:1;cursor:default">0</button>
         <div class="impinfo" id="impInfo"></div>
       </div>
       <div class="actions">
@@ -986,11 +986,9 @@ function renderConfirm(){
   if(contOrd){esperadas=(contOrd.total_bolsas||0)*(contOrd.total_colores||1);}
   else{esperadas=cur.lineas.reduce((a,l)=>a+l.qty*(l.colores||1),0);}
   const realiz=cur.realizadasPrevias||0;const pend=Math.max(0,esperadas-realiz);
-  if(cur.impresionesHoy==null)cur.impresionesHoy=Math.min(cargaBolsas,pend>0?pend:cargaBolsas);
-  $('#impField').textContent=cur.impresionesHoy.toLocaleString('es-AR');
-  $('#impInfo').textContent=`Esperadas ${esperadas.toLocaleString('es-AR')} · ya hechas ${realiz.toLocaleString('es-AR')} · pendientes ${pend.toLocaleString('es-AR')}`;
+  $('#impField').textContent=calcularImpresionesPedido(cur).toLocaleString('es-AR');
+  $('#impInfo').textContent=`Esperadas de la orden ${esperadas.toLocaleString('es-AR')} · ya hechas ${realiz.toLocaleString('es-AR')} · pendientes ${pend.toLocaleString('es-AR')}`;
 }
-$('#impField').onclick=()=>openPad('Impresiones realizadas hoy',cur.impresionesHoy||0,v=>{cur.impresionesHoy=Math.max(0,v||0);renderConfirm();});
 $('#btnBack').onclick=()=>show('scBuild',false);
 $('#btnConfirm').onclick=()=>{const ped=cur;sesion.pedidos.push(ped);refreshHome();toastMsg('✓ Pedido confirmado');cur=null;draft=null;scStack.length=0;scStack.push('scHome');show('scHome',false);savePedido(ped);};
 
@@ -1162,23 +1160,24 @@ function auditImpresiones(peds){
     const L=p.est_lineas||[];
     const bolsas=L.reduce((s,l)=>s+(l.cantidad||0),0);
     const calc=L.reduce((s,l)=>s+((l.cantidad||0)*((l.caras)||1)*((l.colores)||1)),0);
-    const manual=!!(p.impresiones&&p.impresiones>0);
-    const usadas=manual?p.impresiones:calc;
-    return {numero:p.numero,operario:p.operario,bolsas,calc,usadas,manual};
-  }).sort((x,y)=>Math.abs(y.usadas-y.bolsas)-Math.abs(x.usadas-x.bolsas));
+    const stored=(p.impresiones&&p.impresiones>0)?p.impresiones:null;
+    const usadas=stored!=null?stored:calc;
+    const override=stored!=null&&stored!==calc;
+    return {numero:p.numero,operario:p.operario,bolsas,calc,usadas,override};
+  }).sort((x,y)=>Math.abs(y.usadas-y.calc)-Math.abs(x.usadas-x.calc));
 }
 function renderAudit(peds){
   const cont=$('#anaAudit');if(!cont)return;
   const rows=auditImpresiones(peds);
   if(!rows.length){cont.innerHTML='<div class="admuted">Sin pedidos en el período.</div>';$('#anaAlert').style.display='none';return;}
   const tot={bolsas:0,calc:0,usadas:0};rows.forEach(r=>{tot.bolsas+=r.bolsas;tot.calc+=r.calc;tot.usadas+=r.usadas;});
-  const inc=rows.filter(r=>r.usadas!==r.bolsas);
+  const over=rows.filter(r=>r.override);
   const al=$('#anaAlert');
-  if(tot.usadas!==tot.bolsas){al.style.display='block';al.innerHTML=`<div class="audalert">⚠️ Revisar datos de impresión — bolsas ${tot.bolsas.toLocaleString('es-AR')} vs impresiones ${tot.usadas.toLocaleString('es-AR')} (dif ${(tot.usadas-tot.bolsas).toLocaleString('es-AR')}). Detalle por pedido abajo 👇</div>`;}
+  if(over.length){al.style.display='block';al.innerHTML=`<div class="audalert">⚠️ ${over.length} pedido(s) con impresiones guardadas distintas al cálculo automático (registros viejos): impresiones usadas ${tot.usadas.toLocaleString('es-AR')} vs cálculo ${tot.calc.toLocaleString('es-AR')}. Detalle abajo 👇</div>`;}
   else al.style.display='none';
-  const rowsH=rows.map(r=>{const d=r.usadas!==r.bolsas;return `<div class="audrow${d?' inc':''}"><div class="audp">${d?'⚠️':'•'} #${esc(String(r.numero))} · ${esc(r.operario||'')} ${r.manual?'<span class="audtag">manual</span>':'<span class="audtag calc">auto</span>'}</div><div class="audn"><span>bolsas <b>${r.bolsas.toLocaleString('es-AR')}</b></span><span>impres. <b>${r.usadas.toLocaleString('es-AR')}</b></span><span class="audc">×caras×col ${r.calc.toLocaleString('es-AR')}</span></div></div>`;}).join('');
+  const rowsH=rows.map(r=>{const d=r.override;return `<div class="audrow${d?' inc':''}"><div class="audp">${d?'⚠️':'•'} #${esc(String(r.numero))} · ${esc(r.operario||'')} ${d?'<span class="audtag">manual (viejo)</span>':'<span class="audtag calc">auto</span>'}</div><div class="audn"><span>bolsas <b>${r.bolsas.toLocaleString('es-AR')}</b></span><span>impres. <b>${r.usadas.toLocaleString('es-AR')}</b></span><span class="audc">×caras×col ${r.calc.toLocaleString('es-AR')}</span></div></div>`;}).join('');
   const totH=`<div class="audrow audtot"><div class="audp">TOTAL (${rows.length} pedidos)</div><div class="audn"><span>bolsas <b>${tot.bolsas.toLocaleString('es-AR')}</b></span><span>impres. <b>${tot.usadas.toLocaleString('es-AR')}</b></span><span class="audc">calc ${tot.calc.toLocaleString('es-AR')}</span></div></div>`;
-  cont.innerHTML=`<div class="admuted" style="margin-bottom:10px">"Impresiones" que usa Analítica, por pedido. <b>manual</b> = valor guardado a mano en la carga; <b>auto</b> = calculado por líneas. Esta vista es de solo lectura y no modifica nada.</div>`+rowsH+totH;
+  cont.innerHTML=`<div class="admuted" style="margin-bottom:10px">Impresiones = bolsas × caras × colores. <b>auto</b> = coincide con el cálculo; <b>manual (viejo)</b> = registro anterior con un valor distinto. Solo lectura, no modifica nada.</div>`+rowsH+totH;
 }
 function analizarPedidos(pedidos){
   const mat={},med={},colB={},colBg={fris:{},poli:{},lam:{},otro:{}},colT={},comb={},ops={},colAgua={},colSolv={};let bolsas=0,imp=0,aguaI=0,solvI=0,aguaIF=0,solvIF=0,bolsasAgua=0,bolsasSolv=0;
@@ -1752,12 +1751,13 @@ function toastMsg(txt){const t=$('#toast');t.textContent=txt;t.classList.add('on
 async function savePedido(ped){
   if(!db)return;
   const pedId=uuid();ped.id=pedId;
-  await dbInsert('est_pedidos',{id:pedId,numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso',impresiones:ped.impresionesHoy||0});
+  await dbInsert('est_pedidos',{id:pedId,numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso',impresiones:calcularImpresionesPedido(ped)});
   const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:pedId,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0)}));
   if(rows.length)await dbInsert('est_lineas',rows);
   upsertOrden(ped);
 }
 function impCargaRaw(c){const li=(c.est_lineas||[]).reduce((a,l)=>a+((l.cantidad)||0)*((l.caras)||1)*((l.colores)||1),0);return (c.impresiones&&c.impresiones>0)?c.impresiones:li;}
+function calcularImpresionesPedido(ped){const L=(ped&&(ped.lineas||ped.est_lineas))||[];return L.reduce((t,l)=>t+(((l.qty??l.cantidad)||0)*((l.caras)||1)*((l.colores)||1)),0);}
 function impresionesDe(p){if(p.impresiones&&p.impresiones>0)return p.impresiones;const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(((l.cantidad??l.qty)||0)*((l.caras)||1)*((l.colores)||1)),0);}
 async function upsertOrden(ped){
   try{
