@@ -342,6 +342,20 @@
   .accb.rev{color:#C0392B}
   .resprev{max-width:100%;border-radius:14px;border:1px solid var(--line2)}
 
+  /* ── Auditoría de impresiones (solo lectura) ── */
+  .audalert{background:#FDECEA;border:1px solid #F5B7B1;color:#922B21;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:600;margin-bottom:14px}
+  .audrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+  .audrow:last-child{border-bottom:none}
+  .audrow.inc{background:#FFF6F5;border-radius:8px;padding:10px 8px}
+  .audp{font-weight:700;font-size:14px}
+  .audn{display:flex;gap:14px;font-size:13px;color:#555;flex-wrap:wrap}
+  .audn b{color:var(--ink)}
+  .audc{color:var(--gray)}
+  .audtag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:#FCE9C8;color:#8A5A00}
+  .audtag.calc{background:#E6F4EA;color:#1E7A43}
+  .audtot{font-weight:800;border-top:2px solid var(--line2);margin-top:4px}
+  .audtot .audp{font-size:15px}
+
   /* ── Portal del empleado (solo lectura) ── */
   .portalmode .screen:not(#scPortal){display:none!important}
   #scPortal{max-width:520px;margin:0 auto;padding:16px 16px 30px}
@@ -531,6 +545,8 @@
         <div class="adkpi"><div class="v num" id="anaImp">0</div><div class="k">Impresiones</div></div>
         <div class="adkpi"><div class="v num" id="anaPed">0</div><div class="k">Pedidos</div></div>
       </div>
+      <div id="anaAlert" style="display:none"></div>
+      <div class="adcard"><div class="adh">🔍 Auditoría de impresiones<small>bolsas vs. impresiones · solo lectura</small></div><div class="adbd" id="anaAudit"></div></div>
       <div class="adcard"><div class="adh">Tendencia<small>bolsas por día</small></div><div class="adbd" id="anaTend"></div></div>
       <div class="adcard"><div class="adh">Materiales más usados</div><div class="adbd" id="anaMat"></div></div>
       <div class="adcard"><div class="adh">Medidas más fabricadas</div><div class="adbd" id="anaMed"></div></div>
@@ -1141,6 +1157,29 @@ function openJornada(dia){
 
 /* ── Analítica de producción (Etapa 2 · solo lectura · motor de agregación) ── */
 function rankBarsN(obj,sw,n){const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n||10);if(!e.length)return '<div class="admuted">Sin datos en el período.</div>';const max=Math.max(...e.map(x=>x[1]));return e.map(([k,v])=>adBar(k,v,max,'',sw&&sw[k])).join('');}
+function auditImpresiones(peds){
+  return (peds||[]).map(p=>{
+    const L=p.est_lineas||[];
+    const bolsas=L.reduce((s,l)=>s+(l.cantidad||0),0);
+    const calc=L.reduce((s,l)=>s+((l.cantidad||0)*((l.caras)||1)*((l.colores)||1)),0);
+    const manual=!!(p.impresiones&&p.impresiones>0);
+    const usadas=manual?p.impresiones:calc;
+    return {numero:p.numero,operario:p.operario,bolsas,calc,usadas,manual};
+  }).sort((x,y)=>Math.abs(y.usadas-y.bolsas)-Math.abs(x.usadas-x.bolsas));
+}
+function renderAudit(peds){
+  const cont=$('#anaAudit');if(!cont)return;
+  const rows=auditImpresiones(peds);
+  if(!rows.length){cont.innerHTML='<div class="admuted">Sin pedidos en el período.</div>';$('#anaAlert').style.display='none';return;}
+  const tot={bolsas:0,calc:0,usadas:0};rows.forEach(r=>{tot.bolsas+=r.bolsas;tot.calc+=r.calc;tot.usadas+=r.usadas;});
+  const inc=rows.filter(r=>r.usadas!==r.bolsas);
+  const al=$('#anaAlert');
+  if(tot.usadas!==tot.bolsas){al.style.display='block';al.innerHTML=`<div class="audalert">⚠️ Revisar datos de impresión — bolsas ${tot.bolsas.toLocaleString('es-AR')} vs impresiones ${tot.usadas.toLocaleString('es-AR')} (dif ${(tot.usadas-tot.bolsas).toLocaleString('es-AR')}). Detalle por pedido abajo 👇</div>`;}
+  else al.style.display='none';
+  const rowsH=rows.map(r=>{const d=r.usadas!==r.bolsas;return `<div class="audrow${d?' inc':''}"><div class="audp">${d?'⚠️':'•'} #${esc(String(r.numero))} · ${esc(r.operario||'')} ${r.manual?'<span class="audtag">manual</span>':'<span class="audtag calc">auto</span>'}</div><div class="audn"><span>bolsas <b>${r.bolsas.toLocaleString('es-AR')}</b></span><span>impres. <b>${r.usadas.toLocaleString('es-AR')}</b></span><span class="audc">×caras×col ${r.calc.toLocaleString('es-AR')}</span></div></div>`;}).join('');
+  const totH=`<div class="audrow audtot"><div class="audp">TOTAL (${rows.length} pedidos)</div><div class="audn"><span>bolsas <b>${tot.bolsas.toLocaleString('es-AR')}</b></span><span>impres. <b>${tot.usadas.toLocaleString('es-AR')}</b></span><span class="audc">calc ${tot.calc.toLocaleString('es-AR')}</span></div></div>`;
+  cont.innerHTML=`<div class="admuted" style="margin-bottom:10px">"Impresiones" que usa Analítica, por pedido. <b>manual</b> = valor guardado a mano en la carga; <b>auto</b> = calculado por líneas. Esta vista es de solo lectura y no modifica nada.</div>`+rowsH+totH;
+}
 function analizarPedidos(pedidos){
   const mat={},med={},colB={},colBg={fris:{},poli:{},lam:{},otro:{}},colT={},comb={},ops={},colAgua={},colSolv={};let bolsas=0,imp=0,aguaI=0,solvI=0,aguaIF=0,solvIF=0,bolsasAgua=0,bolsasSolv=0;
   (pedidos||[]).forEach(p=>{imp+=impresionesDe(p);(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;
@@ -1174,9 +1213,10 @@ $('#anaTabs').addEventListener('click',e=>{const b=e.target.closest('button');if
 function anaRango(){const now=new Date();if(anaPeriodo==='semana'){const off=(now.getDay()+6)%7;return[new Date(now.getFullYear(),now.getMonth(),now.getDate()-off).toISOString(),null,'Esta semana'];}if(anaPeriodo==='mes'){return[new Date(now.getFullYear(),now.getMonth(),1).toISOString(),null,H_MES[now.getMonth()]+' '+now.getFullYear()];}return['2000-01-01T00:00:00.000Z',null,'Todo el historial'];}
 async function renderAnalitica(){
   const r=anaRango();$('#anaLbl').textContent=r[2];
-  ['anaMat','anaMed','anaComb','anaColB','anaColAgua','anaColSolv','anaTintaUso','anaOps','anaTend'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
+  ['anaMat','anaMed','anaComb','anaColB','anaColAgua','anaColSolv','anaTintaUso','anaOps','anaTend','anaAudit'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
   const peds=await fetchPedidosRango(r[0],r[1]);const a=analizarPedidos(peds);
   anaExport={a,rango:r,peds};$('#anaBol').textContent=a.bolsas.toLocaleString('es-AR');$('#anaImp').textContent=a.impresiones.toLocaleString('es-AR');$('#anaPed').textContent=a.pedidos;
+  renderAudit(peds);
   $('#anaTend').innerHTML=tendenciaSVG(peds);
   $('#anaMat').innerHTML=rankBarsN(a.mat,null,8);
   $('#anaMed').innerHTML=rankBarsN(a.med,null,10);
