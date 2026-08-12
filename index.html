@@ -178,6 +178,8 @@
   .bcard{background:var(--surf);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
   .bch{padding:11px 14px;background:#FFFDF5;border-bottom:1px solid var(--line);font-size:15px;font-weight:800;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
   .bch span:last-child{font-size:12px;color:var(--gray);font-weight:600;text-align:right}
+  .bedit{padding:10px 14px;border-top:1px solid var(--line);text-align:right}
+  .bedit .accb{flex:none;min-width:0;display:inline-block}
   .bline{padding:10px 14px;border-bottom:1px solid var(--line);font-size:14px}
   .bline:last-child{border:none}
   .bline small{display:block;color:var(--gray);font-size:12px;margin-top:1px}
@@ -445,6 +447,7 @@
       <button class="histbtn" id="ordBtn">Órdenes en proceso ›</button>
       <button class="histbtn" id="puntBtn">Puntos de producción 🧪 ›</button>
       <button class="histbtn" id="cfgBtn">Configuración de puntos ⚙️ ›</button>
+      <button class="histbtn" id="admBuscarBtn">Buscar / editar pedido 🔎 ›</button>
       <button class="histbtn" id="avBtn">Centro de avisos 📢 ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
@@ -875,7 +878,7 @@ function setPedidoField(){
   const st=$('#shareTog');if(st)st.classList.toggle('on',!!cur.compartido);
 }
 $('#shareTog').onclick=()=>{cur.compartido=!cur.compartido;setPedidoField();};
-$('#pedidoBtn').onclick=()=>openPad('N° de pedido',cur.numero||'',n=>{if(n>0)checkNumero(n);});
+$('#pedidoBtn').onclick=()=>{if(cur&&cur.editId){toastMsg('El N° no se cambia al editar');return;}openPad('N° de pedido',cur.numero||'',n=>{if(n>0)checkNumero(n);});};
 async function checkNumero(n){
   cur.numero=n;cur.previas=[];cur.impresionesHoy=null;cur.realizadasPrevias=0;contOrd=null;
   let ord=null,existing=[];
@@ -988,9 +991,11 @@ function renderConfirm(){
   const realiz=cur.realizadasPrevias||0;const pend=Math.max(0,esperadas-realiz);
   $('#impField').textContent=calcularImpresionesPedido(cur).toLocaleString('es-AR');
   $('#impInfo').textContent=`Esperadas de la orden ${esperadas.toLocaleString('es-AR')} · ya hechas ${realiz.toLocaleString('es-AR')} · pendientes ${pend.toLocaleString('es-AR')}`;
+  $('#btnConfirm').textContent=cur.editId?'✓ Guardar cambios':'✓ Confirmar';
+  $('#cNum').textContent='#'+cur.numero+(cur.compartido?' · compartido':'')+(cur.editId?' · editando':'');
 }
 $('#btnBack').onclick=()=>show('scBuild',false);
-$('#btnConfirm').onclick=()=>{const ped=cur;sesion.pedidos.push(ped);refreshHome();toastMsg('✓ Pedido confirmado');cur=null;draft=null;scStack.length=0;scStack.push('scHome');show('scHome',false);savePedido(ped);};
+$('#btnConfirm').onclick=()=>{const ped=cur;if(ped&&ped.editId){guardarEdicion(ped);return;}sesion.pedidos.push(ped);refreshHome();toastMsg('✓ Pedido confirmado');cur=null;draft=null;scStack.length=0;scStack.push('scHome');show('scHome',false);savePedido(ped);};
 
 /* ── trabajos del día ── */
 $('#pedHoyBtn').onclick=()=>{buildPedidos();show('scPedidos');};
@@ -1085,7 +1090,43 @@ async function deletePedido(i){
 
 /* ── buscar pedido ── */
 $('#buscarBtn').onclick=()=>{$('#buscarField').className='pedidoField empty';$('#buscarVal').textContent='Tocá para ingresar';$('#buscarRes').innerHTML='';show('scBuscar');};
+$('#admBuscarBtn')&&($('#admBuscarBtn').onclick=()=>{$('#buscarField').className='pedidoField empty';$('#buscarVal').textContent='Tocá para ingresar';$('#buscarRes').innerHTML='';show('scBuscar');});
 $('#buscarField').onclick=()=>openPad('Buscar N° de pedido','',n=>{if(n>0)buscarPedido(n);});
+let _buscData=[];
+function snapshotPed(p){return {operario:p.operario,compartido:!!p.compartido,lineas:(p.lineas||[]).map(l=>({prod:l.prod,med:l.med,bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo,caras:l.caras,colores:l.colores,qty:l.qty}))};}
+function abrirEdicion(p){
+  if(!adminWho){toastMsg('Solo administradores');return;}
+  if(!p)return;
+  cur={operario:p.operario,numero:p.numero,compartido:!!p.compartido,previas:[],editId:p.id,editCreated:p.created_at,
+    lineas:(p.est_lineas||[]).map(l=>({prod:l.producto,med:l.medida,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras||1,colores:l.colores||1,qty:l.cantidad}))};
+  cur._orig=snapshotPed(cur);
+  newDraft();
+  $('#whoName').textContent=cur.operario;
+  $('#lineBuilder').style.display='block';
+  setPedidoField();renderPrevias();renderOptions();renderCart();
+  show('scBuild');
+  toastMsg('Editando #'+cur.numero+' — corregí las líneas y confirmá');
+}
+async function guardarEdicion(ped){
+  if(!adminWho){toastMsg('Solo administradores');return;}
+  if(!db){toastMsg('Sin conexión a la base');return;}
+  if(!ped.lineas.length){toastMsg('El pedido debe tener al menos una línea');return;}
+  let multi=false;
+  try{const {data:cs}=await db.from('est_pedidos').select('id').eq('numero',String(ped.numero));multi=(cs||[]).length>1;}catch(e){}
+  if(!confirm('¿Guardar cambios en el pedido #'+ped.numero+'?'+(multi?'\n\n⚠️ Este número tiene varias cargas registradas. Se edita SOLO esta; las demás no se tocan.':'')))return;
+  try{
+    const impresiones=calcularImpresionesPedido(ped);
+    await db.from('est_pedidos').update({operario:ped.operario,compartido:!!ped.compartido,impresiones}).eq('id',ped.editId);
+    await db.from('est_lineas').delete().eq('pedido_id',ped.editId);
+    const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:ped.editId,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0)}));
+    if(rows.length)await db.from('est_lineas').insert(rows);
+    await dbInsert('auditoria',{id:uuid(),entidad:'pedido',entidad_id:String(ped.numero),accion:'modificar',detalle:{antes:ped._orig,despues:snapshotPed(ped),impresiones},usuario:adminWho||'admin'});
+    await upsertOrden(ped);
+    toastMsg('✓ Pedido actualizado correctamente');
+    const num=ped.numero;cur=null;draft=null;
+    scStack.length=0;scStack.push('scHome');show('scBuscar',false);buscarPedido(num);
+  }catch(e){console.error('editar pedido',e);toastMsg('⚠ No se pudo guardar la edición');}
+}
 async function buscarPedido(n){
   $('#buscarField').className='pedidoField set';$('#buscarVal').textContent='#'+n;
   const R=$('#buscarRes');R.innerHTML='<div class="admuted" style="padding:16px">Buscando…</div>';
@@ -1094,11 +1135,14 @@ async function buscarPedido(n){
     const {data,error}=await db.from('est_pedidos').select('*, est_lineas(*)').eq('numero',String(n)).order('created_at',{ascending:true});
     if(error)throw error;
     if(!data||!data.length){R.innerHTML='<div class="admuted" style="padding:16px">No se encontró el pedido #'+n+'.</div>';return;}
-    R.innerHTML=data.map(p=>{
+    _buscData=data;
+    R.innerHTML=data.map((p,idx)=>{
       const dt=new Date(p.created_at);const fh=dt.toLocaleDateString('es-AR')+' · '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
       const lin=(p.est_lineas||[]).map(l=>{const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;return `<div class="bline"><b>${(l.cantidad||0).toLocaleString('es-AR')}</b> ${nm} ${l.medida}<small>bolsa ${l.color_bolsa||'—'} · ${cols||'—'} · ${l.tipo_tinta||'—'} · ${l.caras}c/${l.colores}col</small></div>`;}).join('');
-      return `<div class="bcard"><div class="bch"><span><b>#${p.numero}</b>${p.compartido?' · compartido':''}</span><span>${fh} · ${p.operario}</span></div>${lin}</div>`;
+      const editBtn=adminWho?`<div class="bedit"><button class="accb copy busc-edit" data-idx="${idx}">✏️ Editar pedido</button></div>`:'';
+      return `<div class="bcard"><div class="bch"><span><b>#${p.numero}</b>${p.compartido?' · compartido':''}</span><span>${fh} · ${p.operario}</span></div>${lin}${editBtn}</div>`;
     }).join('');
+    R.querySelectorAll('.busc-edit').forEach(b=>b.onclick=()=>abrirEdicion(_buscData[+b.dataset.idx]));
   }catch(err){console.error('buscar',err);R.innerHTML='<div class="admuted" style="padding:16px">Error al buscar.</div>';}
 }
 
