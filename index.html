@@ -358,6 +358,31 @@
   .audtot{font-weight:800;border-top:2px solid var(--line2);margin-top:4px}
   .audtot .audp{font-size:15px}
 
+  /* ── Bloques nuevos de Analítica ── */
+  .fri-row{padding:11px 2px;border-bottom:1px solid var(--line2)}
+  .fri-row:last-child{border-bottom:none}
+  .fri-row.tot{border-top:2px solid var(--line2);font-weight:800}
+  .fri-h{font-weight:700;font-size:14px;margin-bottom:4px}
+  .fri-n{display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:#555;align-items:baseline}
+  .fri-n b{color:var(--ink)}
+  .fri-pct{margin-left:auto;font-weight:800;color:var(--ink)}
+  .ecogrid{display:flex;gap:10px;margin-bottom:12px}
+  .ecogrid>div{flex:1;background:#F7F7F7;border-radius:10px;padding:10px;text-align:center}
+  .ecogrid span{display:block;font-size:12px;color:var(--gray);margin-bottom:3px}
+  .ecogrid b{font-size:17px}
+  .ecosave{background:#EAF7F0;border-radius:12px;padding:12px 14px}
+  .ecosave-h{font-weight:800;font-size:14px;margin-bottom:8px}
+  .eco-l{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
+  .eco-l>span{color:#3a6b52}
+  .eco-l.tot{border-top:1px dashed #B7DCC7;margin-top:4px;padding-top:8px;font-weight:800;font-size:17px;color:#0F7A4F}
+  .rend-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line2)}
+  .rend-row:last-child{border-bottom:none}
+  .rend-op{font-weight:700;font-size:14px}
+  .rend-op small{display:block;color:var(--gray);font-weight:400;font-size:12px;margin-top:2px}
+  .rend-kpi{display:flex;gap:14px;text-align:center}
+  .rend-kpi b{display:block;font-size:18px}
+  .rend-kpi span{font-size:11px;color:var(--gray)}
+
   /* ── Portal del empleado (solo lectura) ── */
   .portalmode .screen:not(#scPortal){display:none!important}
   #scPortal{max-width:520px;margin:0 auto;padding:16px 16px 30px}
@@ -560,6 +585,10 @@
       <div class="adcard"><div class="adh">💧 Colores más usados<small>tinta al agua</small></div><div class="adbd" id="anaColAgua"></div></div>
       <div class="adcard"><div class="adh">🧪 Colores más usados<small>tinta solvente</small></div><div class="adbd" id="anaColSolv"></div></div>
       <div class="adcard"><div class="adh">Producción por operario</div><div class="adbd" id="anaOps"></div></div>
+      <div class="adcard"><div class="adh">🧵 Friselina — tipo de tinta<small>al agua vs Eva Flex</small></div><div class="adbd" id="anaFrisTinta"></div></div>
+      <div class="adcard"><div class="adh">💰 Impacto económico — tintas<small>ahorro estimado por tinta al agua</small></div><div class="adbd" id="anaEco"></div></div>
+      <div class="adcard"><div class="adh">📦 Distribución de pedidos por cantidad</div><div class="adbd" id="anaDistrib"></div></div>
+      <div class="adcard"><div class="adh">⏱️ Rendimiento por hora<small>por operario · solo analítico</small></div><div class="adbd" id="anaRend"></div></div>
     </div>
 
     <!-- ACCESOS AL PERSONAL (admin) -->
@@ -770,6 +799,16 @@
   <input type="text" id="corMotivo" class="hsel" placeholder="Ej: corte de luz, no pudieron fichar el regreso">
   <button class="contbtn primary" id="corGuardar" style="margin-top:12px">Guardar corrección</button>
   <div id="corHist"></div>
+</div></div>
+
+<div class="ov" id="ovEcoCfg"><div class="pad">
+  <div class="kh"><span class="lbl">⚙️ Costos de tinta</span><button class="close" id="ecoCfgCancel">✕</button></div>
+  <p style="font-size:13px;color:var(--gray);margin:0 0 14px">Se usan para el impacto económico. Editables sin tocar el código.</p>
+  <div class="hrow"><span>Tinta al agua — $/kg</span><input type="number" id="ecoAguaPrecio" inputmode="numeric"></div>
+  <div class="hrow"><span>Tinta al agua — impresiones/kg</span><input type="number" id="ecoAguaRend" inputmode="numeric"></div>
+  <div class="hrow"><span>Eva Flex — $/kg</span><input type="number" id="ecoEvaPrecio" inputmode="numeric"></div>
+  <div class="hrow"><span>Eva Flex — impresiones/kg</span><input type="number" id="ecoEvaRend" inputmode="numeric"></div>
+  <button class="contbtn primary" id="ecoCfgSave" style="margin-top:14px">Guardar costos</button>
 </div></div>
 
 <div class="ov" id="ovConfigLiq"><div class="pad">
@@ -1224,8 +1263,8 @@ function renderAudit(peds){
   cont.innerHTML=`<div class="admuted" style="margin-bottom:10px">Impresiones = bolsas × caras × colores. <b>auto</b> = coincide con el cálculo; <b>manual (viejo)</b> = registro anterior con un valor distinto. Solo lectura, no modifica nada.</div>`+rowsH+totH;
 }
 function analizarPedidos(pedidos){
-  const mat={},med={},colB={},colBg={fris:{},poli:{},lam:{},otro:{}},colT={},comb={},ops={},colAgua={},colSolv={};let bolsas=0,imp=0,aguaI=0,solvI=0,aguaIF=0,solvIF=0,bolsasAgua=0,bolsasSolv=0;
-  (pedidos||[]).forEach(p=>{imp+=impresionesDe(p);(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;
+  const mat={},med={},colB={},colBg={fris:{},poli:{},lam:{},otro:{}},colT={},comb={},ops={},colAgua={},colSolv={};let bolsas=0,imp=0,aguaI=0,solvI=0,aguaIF=0,solvIF=0,bolsasAgua=0,bolsasSolv=0,frisBolAgua=0,frisBolSolv=0,frisPedAgua=0,frisPedSolv=0;
+  (pedidos||[]).forEach(p=>{imp+=impresionesDe(p);let pFA=false,pFS=false;(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;
     const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;
     mat[nm]=(mat[nm]||0)+q; med[l.medida]=(med[l.medida]||0)+q;
     if(l.color_bolsa){colB[l.color_bolsa]=(colB[l.color_bolsa]||0)+q;const g=grupoBolsa(l.producto);colBg[g][l.color_bolsa]=(colBg[g][l.color_bolsa]||0)+q;}
@@ -1234,13 +1273,61 @@ function analizarPedidos(pedidos){
     const li=q*((l.caras)||1)*((l.colores)||1);if(l.tipo_tinta==='Al agua')aguaI+=li;else if(l.tipo_tinta)solvI+=li;if(l.producto==='fris'){if(l.tipo_tinta==='Al agua')aguaIF+=li;else if(l.tipo_tinta)solvIF+=li;}
     const esAgua=l.tipo_tinta==='Al agua',esSolv=l.tipo_tinta&&l.tipo_tinta!=='Al agua';
     if(esAgua)bolsasAgua+=q;else if(esSolv)bolsasSolv+=q;
+    if(l.producto==='fris'){if(esAgua){frisBolAgua+=q;pFA=true;}else if(esSolv){frisBolSolv+=q;pFS=true;}}
     const bucket=esAgua?colAgua:(esSolv?colSolv:null);
     if(bucket){if(l.tinta)bucket[l.tinta]=(bucket[l.tinta]||0)+q;if(l.colores===2&&l.tinta2)bucket[l.tinta2]=(bucket[l.tinta2]||0)+q;}
     const ck=`${nm} ${l.medida} · ${l.color_bolsa||'—'}`;comb[ck]=(comb[ck]||0)+q;
     ops[p.operario]=(ops[p.operario]||0)+q;
-  });});
-  return {pedidos:(pedidos||[]).length,bolsas,impresiones:imp,mat,med,colB,colBg,colT,comb,ops,aguaI,solvI,aguaIF,solvIF,bolsasAgua,bolsasSolv,colAgua,colSolv};
+  });if(pFA)frisPedAgua++;if(pFS)frisPedSolv++;});
+  return {pedidos:(pedidos||[]).length,bolsas,impresiones:imp,mat,med,colB,colBg,colT,comb,ops,aguaI,solvI,aguaIF,solvIF,bolsasAgua,bolsasSolv,colAgua,colSolv,frisBolAgua,frisBolSolv,frisPedAgua,frisPedSolv};
 }
+function distribPedidos(peds){const b={200:0,500:0,1000:0,otros:0};(peds||[]).forEach(p=>{const q=(p.est_lineas||[]).reduce((s,l)=>s+(l.cantidad||0),0);if(q===200)b[200]++;else if(q===500)b[500]++;else if(q===1000)b[1000]++;else b.otros++;});b.total=(peds||[]).length;return b;}
+function calcEcoTinta(a){const c=CONFIG_TINTA;const cpiAgua=c.agua_rend?c.agua_precio/c.agua_rend:0;const cpiEva=c.eva_rend?c.eva_precio/c.eva_rend:0;const impAgua=a.aguaIF||0;const kgAgua=c.agua_rend?impAgua/c.agua_rend:0;const costoAgua=kgAgua*c.agua_precio;const kgEvaEq=c.eva_rend?impAgua/c.eva_rend:0;const costoEvaEq=kgEvaEq*c.eva_precio;return {cpiAgua,cpiEva,impAgua,kgAgua,costoAgua,kgEvaEq,costoEvaEq,ahorro:costoEvaEq-costoAgua};}
+async function renderAnaExtra(a,r,peds){
+  const totBol=(a.frisBolAgua||0)+(a.frisBolSolv||0);const pct=v=>totBol?Math.round((v||0)/totBol*100):0;
+  const ft=$('#anaFrisTinta');
+  if(ft)ft.innerHTML=`<div class="fri-row"><div class="fri-h">💧 Tinta al agua</div><div class="fri-n"><span><b>${(a.frisBolAgua||0).toLocaleString('es-AR')}</b> bolsas</span><span>${(a.aguaIF||0).toLocaleString('es-AR')} impr.</span><span>${(a.frisPedAgua||0)} ped.</span><span class="fri-pct">${pct(a.frisBolAgua)}%</span></div></div>
+    <div class="fri-row"><div class="fri-h">🧪 Eva Flex / solvente</div><div class="fri-n"><span><b>${(a.frisBolSolv||0).toLocaleString('es-AR')}</b> bolsas</span><span>${(a.solvIF||0).toLocaleString('es-AR')} impr.</span><span>${(a.frisPedSolv||0)} ped.</span><span class="fri-pct">${pct(a.frisBolSolv)}%</span></div></div>
+    <div class="fri-row tot"><div class="fri-h">Total Friselina</div><div class="fri-n"><span><b>${totBol.toLocaleString('es-AR')}</b> bolsas</span><span>${((a.aguaIF||0)+(a.solvIF||0)).toLocaleString('es-AR')} impr.</span><span>&nbsp;</span><span class="fri-pct">100%</span></div></div>`;
+  const e=calcEcoTinta(a),c=CONFIG_TINTA;
+  const ec=$('#anaEco');
+  if(ec){ec.innerHTML=`<div class="ecogrid"><div><span>Costo por impresión · agua</span><b>${money(e.cpiAgua)}</b></div><div><span>Costo por impresión · Eva Flex</span><b>${money(e.cpiEva)}</b></div></div>
+    <div class="ecosave"><div class="ecosave-h">💰 Ahorro estimado por usar tinta al agua (Friselina)</div>
+      <div class="eco-l"><span>Impresiones al agua</span><b>${e.impAgua.toLocaleString('es-AR')}</b></div>
+      <div class="eco-l"><span>Consumo estimado</span><b>${e.kgAgua.toLocaleString('es-AR',{maximumFractionDigits:1})} kg</b></div>
+      <div class="eco-l"><span>Costo estimado al agua</span><b>${money(e.costoAgua)}</b></div>
+      <div class="eco-l"><span>Costo equivalente Eva Flex</span><b>${money(e.costoEvaEq)}</b></div>
+      <div class="eco-l tot"><span>Ahorro estimado</span><b>${money(e.ahorro)}</b></div></div>
+    <div class="admuted" style="margin-top:8px;font-size:12px">Estimación basada en los rendimientos promedio configurados (agua ${money(c.agua_precio)}/kg · ${c.agua_rend} imp/kg; Eva Flex ${money(c.eva_precio)}/kg · ${c.eva_rend} imp/kg). No representa la rentabilidad total del trabajo. <button class="miniadd" id="ecoCfgBtn">⚙️ Editar costos</button></div>`;
+    $('#ecoCfgBtn')&&($('#ecoCfgBtn').onclick=abrirEcoCfg);}
+  const d=distribPedidos(peds),dp=v=>d.total?Math.round(v/d.total*100):0;
+  const drow=(lbl,v)=>`<div class="hday"><span>${lbl}</span><span class="hdayr"><span class="num">${v} ped.</span> <b>${dp(v)}%</b></span></div>`;
+  const dd=$('#anaDistrib');
+  if(dd)dd.innerHTML=drow('200 unidades',d[200])+drow('500 unidades',d[500])+drow('1.000 unidades',d[1000])+drow('Otros',d.otros)+`<div class="hday" style="border-top:2px solid var(--line2);font-weight:800"><span>TOTAL</span><span class="hdayr"><span class="num">${d.total} ped.</span> 100%</span></div>`;
+  let rendRows=[];
+  try{
+    const desdeD=(r[0]||'').slice(0,10)||hoyISO();const hastaD=hoyISO();
+    const hm=await HorasService.modelo(desdeD,hastaD,'__all__','');
+    const horasMap={};hm.empleados.forEach(x=>{horasMap[x.empleado]=x.totMin;});
+    const impMap={},ptMap={};(peds||[]).forEach(p=>{impMap[p.operario]=(impMap[p.operario]||0)+impresionesDe(p);ptMap[p.operario]=(ptMap[p.operario]||0)+puntosDe(p);});
+    const nombres=[...new Set([...Object.keys(horasMap),...Object.keys(impMap)])].filter(Boolean).sort();
+    rendRows=nombres.map(n=>{const min=horasMap[n]||0,hrs=min/60,impr=impMap[n]||0,pts=ptMap[n]||0;return {operario:n,min,impr,pts,impH:hrs?Math.round(impr/hrs):0,ptH:hrs?Math.round(pts/hrs):0};});
+    const rd=$('#anaRend');
+    if(rd)rd.innerHTML=rendRows.length?rendRows.map(x=>`<div class="rend-row"><div class="rend-op">${esc(x.operario)}<small>${HorasService.hm(x.min)} · ${x.impr.toLocaleString('es-AR')} impr · ${Math.round(x.pts).toLocaleString('es-AR')} pts</small></div><div class="rend-kpi"><div><b>${x.impH.toLocaleString('es-AR')}</b><span>imp/h</span></div><div><b>${x.ptH.toLocaleString('es-AR')}</b><span>pts/h</span></div></div></div>`).join(''):'<div class="admuted">Sin horas registradas en el período.</div>';
+  }catch(err){console.error('rend',err);const rd=$('#anaRend');if(rd)rd.innerHTML='<div class="admuted">No se pudo calcular el rendimiento.</div>';}
+  if(anaExport){anaExport.rend=rendRows;anaExport.distrib=d;anaExport.eco=e;}
+}
+function abrirEcoCfg(){$('#ecoAguaPrecio').value=CONFIG_TINTA.agua_precio;$('#ecoAguaRend').value=CONFIG_TINTA.agua_rend;$('#ecoEvaPrecio').value=CONFIG_TINTA.eva_precio;$('#ecoEvaRend').value=CONFIG_TINTA.eva_rend;$('#ovEcoCfg').classList.add('on');}
+$('#ecoCfgCancel')&&($('#ecoCfgCancel').onclick=()=>$('#ovEcoCfg').classList.remove('on'));
+$('#ecoCfgSave')&&($('#ecoCfgSave').onclick=async()=>{
+  const ap=parseFloat($('#ecoAguaPrecio').value),ar=parseFloat($('#ecoAguaRend').value),ep=parseFloat($('#ecoEvaPrecio').value),er=parseFloat($('#ecoEvaRend').value);
+  if(!(ap>=0)||!(ar>0)||!(ep>=0)||!(er>0)){toastMsg('Revisá los valores (rendimientos > 0)');return;}
+  CONFIG_TINTA={agua_precio:ap,agua_rend:ar,eva_precio:ep,eva_rend:er};
+  try{if(db){await db.from('est_config').upsert([{clave:'tinta_agua_precio',valor:ap,updated_at:new Date().toISOString()},{clave:'tinta_agua_rend',valor:ar,updated_at:new Date().toISOString()},{clave:'tinta_eva_precio',valor:ep,updated_at:new Date().toISOString()},{clave:'tinta_eva_rend',valor:er,updated_at:new Date().toISOString()}],{onConflict:'clave'});
+    await dbInsert('auditoria',{id:uuid(),entidad:'config',entidad_id:'tinta',accion:'editar',detalle:{...CONFIG_TINTA},usuario:adminWho||'admin'});}
+    $('#ovEcoCfg').classList.remove('on');toastMsg('✓ Costos actualizados');renderAnalitica();
+  }catch(e){console.error('eco cfg',e);toastMsg('⚠ No se pudieron guardar');}
+});
 function tendenciaSVG(pedidos){
   const byDay={};(pedidos||[]).forEach(p=>{const d=new Date(p.created_at);const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;const q=(p.est_lineas||[]).reduce((a,l)=>a+(l.cantidad||0),0);byDay[k]=(byDay[k]||0)+q;});
   const days=Object.keys(byDay).sort();if(!days.length)return '<div class="admuted">Sin datos en el período.</div>';
@@ -1256,10 +1343,10 @@ $('#anaTabs').addEventListener('click',e=>{const b=e.target.closest('button');if
 function anaRango(){const now=new Date();if(anaPeriodo==='semana'){const off=(now.getDay()+6)%7;return[new Date(now.getFullYear(),now.getMonth(),now.getDate()-off).toISOString(),null,'Esta semana'];}if(anaPeriodo==='mes'){return[new Date(now.getFullYear(),now.getMonth(),1).toISOString(),null,H_MES[now.getMonth()]+' '+now.getFullYear()];}return['2000-01-01T00:00:00.000Z',null,'Todo el historial'];}
 async function renderAnalitica(){
   const r=anaRango();$('#anaLbl').textContent=r[2];
-  ['anaMat','anaMed','anaComb','anaColB','anaColAgua','anaColSolv','anaTintaUso','anaOps','anaTend','anaAudit'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
+  ['anaMat','anaMed','anaComb','anaColB','anaColAgua','anaColSolv','anaTintaUso','anaOps','anaTend','anaAudit','anaFrisTinta','anaEco','anaDistrib','anaRend'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
   const peds=await fetchPedidosRango(r[0],r[1]);const a=analizarPedidos(peds);
   anaExport={a,rango:r,peds};$('#anaBol').textContent=a.bolsas.toLocaleString('es-AR');$('#anaImp').textContent=a.impresiones.toLocaleString('es-AR');$('#anaPed').textContent=a.pedidos;
-  renderAudit(peds);
+  renderAudit(peds);renderAnaExtra(a,r,peds);
   $('#anaTend').innerHTML=tendenciaSVG(peds);
   $('#anaMat').innerHTML=rankBarsN(a.mat,null,8);
   $('#anaMed').innerHTML=rankBarsN(a.med,null,10);
@@ -1393,6 +1480,10 @@ function anaDescriptor(a,rango,peds){
       {titulo:'Colores — tinta solvente',columnas:_cNom,filas:_rankPct(a.colSolv,a.bolsasSolv)},
       {titulo:'Impresiones por tinta',columnas:[{key:'ambito',label:'Ámbito'},{key:'agua',label:'Al agua',fmt:'num'},{key:'solvente',label:'Solvente',fmt:'num'}],filas:[{ambito:'Todo el taller',agua:a.aguaI,solvente:a.solvI},{ambito:'Solo friselina',agua:a.aguaIF,solvente:a.solvIF}]},
       {titulo:'Combinaciones',columnas:[{key:'nombre',label:'Combinación'},{key:'cantidad',label:'Cantidad',fmt:'num'}],filas:Object.entries(a.comb).sort((x,y)=>y[1]-x[1]).slice(0,25).map(([k,v])=>({nombre:k,cantidad:v}))},
+      {titulo:'Friselina por tipo de tinta',columnas:[{key:'tinta',label:'Tipo de tinta'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'impresiones',label:'Impresiones',fmt:'num'},{key:'pedidos',label:'Pedidos',fmt:'num'},{key:'pct',label:'% Friselina',fmt:'pct'}],filas:(()=>{const tb=(a.frisBolAgua||0)+(a.frisBolSolv||0);const pc=v=>tb?Math.round(v/tb*1000)/10:0;return [{tinta:'Tinta al agua',bolsas:a.frisBolAgua||0,impresiones:a.aguaIF||0,pedidos:a.frisPedAgua||0,pct:pc(a.frisBolAgua||0)},{tinta:'Eva Flex / solvente',bolsas:a.frisBolSolv||0,impresiones:a.solvIF||0,pedidos:a.frisPedSolv||0,pct:pc(a.frisBolSolv||0)}];})()},
+      {titulo:'Impacto económico — tintas',columnas:[{key:'concepto',label:'Concepto'},{key:'valor',label:'Valor'}],filas:(()=>{const e=calcEcoTinta(a),c=CONFIG_TINTA;return [{concepto:'Costo por impresión · agua',valor:money(e.cpiAgua)},{concepto:'Costo por impresión · Eva Flex',valor:money(e.cpiEva)},{concepto:'Impresiones Friselina al agua',valor:(e.impAgua).toLocaleString('es-AR')},{concepto:'Consumo estimado (kg)',valor:e.kgAgua.toLocaleString('es-AR',{maximumFractionDigits:2})},{concepto:'Costo estimado al agua',valor:money(e.costoAgua)},{concepto:'Costo equivalente Eva Flex',valor:money(e.costoEvaEq)},{concepto:'Ahorro estimado de tinta',valor:money(e.ahorro)},{concepto:'Valores usados',valor:'agua '+money(c.agua_precio)+'/kg · '+c.agua_rend+' imp/kg; Eva '+money(c.eva_precio)+'/kg · '+c.eva_rend+' imp/kg'}];})()},
+      {titulo:'Distribución de pedidos por cantidad',columnas:[{key:'cant',label:'Cantidad'},{key:'pedidos',label:'Pedidos',fmt:'num'},{key:'pct',label:'%',fmt:'pct'}],filas:(()=>{const d=distribPedidos(peds),pc=v=>d.total?Math.round(v/d.total*1000)/10:0;return [{cant:'200 unidades',pedidos:d[200],pct:pc(d[200])},{cant:'500 unidades',pedidos:d[500],pct:pc(d[500])},{cant:'1.000 unidades',pedidos:d[1000],pct:pc(d[1000])},{cant:'Otros',pedidos:d.otros,pct:pc(d.otros)}];})(),totales:{cant:'Total',pedidos:distribPedidos(peds).total}},
+      {titulo:'Rendimiento por hora',columnas:[{key:'operario',label:'Operario'},{key:'horas',label:'Horas',fmt:'time'},{key:'impr',label:'Impresiones',fmt:'num'},{key:'impH',label:'Imp/h',fmt:'num'},{key:'pts',label:'Puntos',fmt:'num'},{key:'ptH',label:'Puntos/h',fmt:'num'}],filas:((anaExport&&anaExport.rend)||[]).map(x=>({operario:x.operario,horas:x.min,impr:x.impr,impH:x.impH,pts:Math.round(x.pts),ptH:x.ptH}))},
       {titulo:'Tendencia diaria',columnas:[{key:'fecha',label:'Fecha'},{key:'bolsas',label:'Bolsas',fmt:'num'}],filas:tend,grafico:{tipo:'barras',xKey:'fecha',yKey:'bolsas'}}
     ],archivo:'Analitica_'+String(rango[2]||'').replace(/\s+/g,'-')+'_'+hasta};
 }
@@ -1597,7 +1688,8 @@ $('#corGuardar').onclick=async()=>{
 function money(n){return '$'+Math.round(n||0).toLocaleString('es-AR');}
 const TIPO_DESC={falta_injustificada:'Falta injustificada',llegada_tarde:'Llegada tarde',salida_anticipada:'Salida anticipada',ausencia_parcial:'Ausencia parcial',adelanto:'Adelanto de dinero',otro:'Otro'};
 let CONFIG_LIQ={hora_normal:5000,hora_extra:8000,feriado:30000};
-async function loadConfigLiq(){if(!db)return;try{const {data}=await db.from('est_config').select('*');(data||[]).forEach(r=>{if(r.clave in CONFIG_LIQ)CONFIG_LIQ[r.clave]=Number(r.valor);});}catch(e){console.error('config liq',e);}}
+let CONFIG_TINTA={agua_precio:8000,agua_rend:750,eva_precio:46000,eva_rend:1000};
+async function loadConfigLiq(){if(!db)return;try{const {data}=await db.from('est_config').select('*');const tk={tinta_agua_precio:'agua_precio',tinta_agua_rend:'agua_rend',tinta_eva_precio:'eva_precio',tinta_eva_rend:'eva_rend'};(data||[]).forEach(r=>{if(r.clave in CONFIG_LIQ)CONFIG_LIQ[r.clave]=Number(r.valor);if(r.clave in tk)CONFIG_TINTA[tk[r.clave]]=Number(r.valor);});}catch(e){console.error('config liq',e);}}
 async function loadDescuentos(desde,hasta){if(!db)return {};try{const {data}=await db.from('est_descuentos').select('*').gte('fecha',desde).lte('fecha',hasta);const by={};(data||[]).forEach(d=>{(by[d.operario]=by[d.operario]||[]).push(d);});Object.values(by).forEach(a=>a.sort((x,y)=>x.fecha<y.fecha?-1:1));return by;}catch(e){console.error('load desc',e);return {};}}
 function feriadosEnRango(desde,hasta){
   if(!desde||!hasta)return [];
