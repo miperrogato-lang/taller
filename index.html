@@ -335,6 +335,21 @@
   .liqsub{font-weight:800;font-size:14px;margin:14px 0 6px;color:var(--ink)}
   .miniadd{border:1px solid var(--line2);background:var(--surf);border-radius:9px;padding:5px 10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
   #descObs{width:100%;font-family:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--line2);border-radius:11px;box-sizing:border-box}
+  /* ── Resumen general de liquidación ── */
+  .liq-gen{border:2px solid var(--ink)}
+  .liq-top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .liq-estado{font-size:13px;font-weight:800;padding:4px 10px;border-radius:20px}
+  .liq-estado.curso{background:#FFF4D6;color:#8A6D00}
+  .liq-estado.full{background:#E6F4EA;color:#1E7A43}
+  .liq-per{font-size:12px;color:var(--gray);font-weight:600}
+  .liq-bank{background:var(--ink);color:#fff;border-radius:14px;padding:16px;text-align:center;margin-bottom:12px}
+  .liq-bank-l{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:#FFC107;font-weight:800}
+  .liq-bank-v{font-size:34px;font-weight:800;line-height:1.1;margin-top:4px}
+  .liq-break{background:#F7F7F7;border-radius:12px;padding:10px 14px;font-size:14px}
+  .liq-break>div{display:flex;justify-content:space-between;padding:5px 0}
+  .liq-break>div>span{color:var(--gray)}
+  .liq-break-tot{border-top:1px dashed #D6D6D6;margin-top:4px;padding-top:8px !important;font-weight:800;font-size:17px}
+  .liq-break-tot>span{color:var(--ink) !important}
 
   /* ── Accesos al personal (admin) ── */
   .accbtns{display:flex;flex-wrap:wrap;gap:8px}
@@ -653,7 +668,7 @@
       </div></div>
       <div id="horRes"></div>
       <div id="horExport" style="display:none">
-        <div class="expbar"><button class="expbtn pdf" id="horPdf">📄 Resumen (PDF)</button><button class="expbtn" id="horExcel">📊 Resumen (Excel)</button></div>
+        <div class="expbar"><button class="expbtn pdf" id="horPdf">🖨️ Imprimir resumen (PDF)</button><button class="expbtn" id="horExcel">📊 Resumen (Excel)</button></div>
       </div>
     </div>
 
@@ -1577,11 +1592,30 @@ $('#horCalc').onclick=async()=>{const r=horRangoFechas();if(!r[0]||!r[1]){toastM
   $('#horRes').innerHTML='<div class="admuted" style="padding:16px">Calculando…</div>';$('#horExport').style.display='none';
   horModelo=await LiqService.modelo(r[0],r[1],r[2]);renderLiq(horModelo);
   $('#horExport').style.display=horModelo.empleados.length?'block':'none';};
+function liqTotales(m){const T=k=>m.empleados.reduce((s,e)=>s+(e[k]||0),0);return {emp:m.empleados.length,pn:T('pagoNormal'),px:T('pagoExtra'),ps:T('pagoSabado'),pf:T('pagoFeriado'),desc:T('descTotal'),total:T('total')};}
+function _fechaAR(iso){return iso?iso.split('-').reverse().join('/'):'';}
+function panelGeneral(m){
+  const t=liqTotales(m);const enCurso=m.hasta>=hoyISO();
+  const estado=enCurso?`<span class="liq-estado curso">🟡 Acumulado hasta ${_fechaAR(m.hasta)}</span>`:`<span class="liq-estado full">🟢 Período completo</span>`;
+  return `<div class="adcard liq-gen"><div class="adbd">
+    <div class="liq-top">${estado}<span class="liq-per">${_fechaAR(m.desde)} → ${_fechaAR(m.hasta)} · ${t.emp} empleados</span></div>
+    <div class="liq-bank"><div class="liq-bank-l">💰 Total a retirar del banco</div><div class="liq-bank-v">${money(t.total)}</div></div>
+    <div class="liq-break">
+      <div><span>Horas normales</span><b>${money(t.pn)}</b></div>
+      <div><span>Horas extras</span><b>${money(t.px)}</b></div>
+      <div><span>Sábados</span><b>${money(t.ps)}</b></div>
+      <div><span>Feriados</span><b>${money(t.pf)}</b></div>
+      <div><span>Descuentos</span><b style="color:#C0392B">− ${money(t.desc)}</b></div>
+      <div class="liq-break-tot"><span>TOTAL NETO</span><b>${money(t.total)}</b></div>
+    </div>
+    <button class="contbtn primary" id="liqPrintGen" style="margin-top:12px">🖨️ Imprimir resumen general</button>
+  </div></div>`;
+}
 function renderLiq(m){
   const cont=$('#horRes');
   if(!m.empleados.length){cont.innerHTML='<div class="admuted" style="padding:16px">Sin fichajes ni descuentos en el período.</div>';return;}
   const EST={completo:'🟢',falta_salida:'🟡',falta_entrada:'🔴',sin:'⚪'};
-  cont.innerHTML=m.empleados.map((e,ei)=>{
+  cont.innerHTML=panelGeneral(m)+m.empleados.map((e,ei)=>{
     const jorn=e.dias.length?e.dias.map((d,di)=>{const bl=eventosABloques(d.eventos||[]).map(b=>`${b.entrada||'—'}–${b.salida||'—'}`).join(' · ')||'—';const et=d.feriado?' · feriado':(d.tipo==='fin de semana'?' · finde':'');return `<div class="hday"><span>${EST[d.estado]||''} ${d.fecha.slice(5)}${et}<br><small style="color:var(--gray)">${bl}</small></span><span class="hdayr"><span class="num">${HorasService.hm(d.normal)} + <b>${HorasService.hm(d.extra)}</b></span><button class="corbtn corfix" data-e="${ei}" data-d="${di}">✏️</button></span></div>`;}).join(''):'<div class="admuted" style="padding:8px 2px">Sin jornadas.</div>';
     const desc=e.descuentos.length?e.descuentos.map((d,dj)=>`<div class="hday"><span>${d.fecha.slice(5)} · ${TIPO_DESC[d.tipo]||d.tipo}<br><small style="color:var(--gray)">${esc(d.motivo?d.motivo+' — ':'')}${esc(d.observacion||'')}</small></span><span class="hdayr"><span class="num" style="color:#C0392B">− ${money(d.montoLive)}</span><button class="corbtn descdel" data-e="${ei}" data-i="${dj}">🗑️</button></span></div>`).join(''):'<div class="admuted" style="padding:8px 2px">Sin descuentos.</div>';
     return `<div class="adcard">
@@ -1609,6 +1643,7 @@ function renderLiq(m){
   cont.querySelectorAll('.descadd').forEach(b=>b.onclick=(ev)=>{ev.stopPropagation();abrirDescuento(m.empleados[+b.dataset.e].empleado);});
   cont.querySelectorAll('.liqpdf').forEach(b=>b.onclick=(ev)=>{ev.stopPropagation();try{ExportService.pdf(liqDescriptor(m.empleados[+b.dataset.e],m));}catch(err){console.error(err);toastMsg('⚠ No se pudo generar (probá en Vercel)');}});
   cont.querySelectorAll('.liqxls').forEach(b=>b.onclick=(ev)=>{ev.stopPropagation();try{ExportService.excel(liqDescriptor(m.empleados[+b.dataset.e],m));}catch(err){console.error(err);toastMsg('⚠ No se pudo generar (probá en Vercel)');}});
+  const pg=$('#liqPrintGen');if(pg)pg.onclick=()=>{try{ExportService.pdf(liqResumenDescriptor(m));}catch(err){console.error(err);toastMsg('⚠ No se pudo generar (probá en Vercel)');}};
 }
 $('#horPdf').onclick=()=>{if(horModelo&&horModelo.empleados.length)try{ExportService.pdf(liqResumenDescriptor(horModelo));}catch(e){console.error(e);toastMsg('⚠ No se pudo generar (probá en Vercel)');}};
 $('#horExcel').onclick=()=>{if(horModelo&&horModelo.empleados.length)try{ExportService.excel(liqResumenDescriptor(horModelo));}catch(e){console.error(e);toastMsg('⚠ No se pudo generar (probá en Vercel)');}};
@@ -1750,8 +1785,8 @@ function liqDescriptor(e,m){
 function liqResumenDescriptor(m){
   const filas=m.empleados.map(e=>({empleado:e.empleado,dias:e.diasTrab,normal:e.totNormal,extra:e.totExtra,sabado:e.totSabado,ft:e.feriadosTrab,fnt:e.feriadosNoTrab,pn:e.pagoNormal,px:e.pagoExtra,ps:e.pagoSabado,pf:e.pagoFeriado,desc:e.descTotal,total:e.total}));
   const T=k=>m.empleados.reduce((s,e)=>s+(e[k]||0),0);
-  return {titulo:'Liquidación del personal',periodo:{label:m.label,desde:m.desde,hasta:m.hasta},filtros:{'Feriados en el período':String(m.numFeriados)},
-    kpis:[{label:'Empleados',value:m.empleados.length},{label:'Total a pagar',value:money(T('total'))},{label:'Horas normales',value:HorasService.hm(T('totNormal'))},{label:'Horas extras',value:HorasService.hm(T('totExtra'))},{label:'Sábados',value:HorasService.hm(T('totSabado'))},{label:'Feriados en el período',value:m.numFeriados},{label:'Descuentos',value:money(T('descTotal'))},{label:'Valores',value:'Normal '+money(m.config.normal)+' · Extra '+money(m.config.extra)+' · Feriado '+money(m.config.feriado)}],
+  return {titulo:'Liquidación del personal',periodo:{label:m.label,desde:m.desde,hasta:m.hasta},filtros:{'Estado':(m.hasta>=hoyISO()?'Acumulado hasta '+m.hasta:'Período completo'),'Empleados':String(m.empleados.length),'Feriados en el período':String(m.numFeriados)},
+    kpis:[{label:'TOTAL A RETIRAR DEL BANCO',value:money(T('total'))},{label:'Empleados',value:m.empleados.length},{label:'Horas normales',value:money(T('pagoNormal'))},{label:'Horas extras',value:money(T('pagoExtra'))},{label:'Sábados',value:money(T('pagoSabado'))},{label:'Feriados',value:money(T('pagoFeriado'))},{label:'Descuentos',value:'− '+money(T('descTotal'))},{label:'Valores',value:'Normal '+money(m.config.normal)+' · Extra '+money(m.config.extra)+' · Feriado '+money(m.config.feriado)}],
     secciones:[{titulo:'Liquidación por empleado',columnas:[{key:'empleado',label:'Empleado'},{key:'dias',label:'Días',fmt:'num'},{key:'normal',label:'Normales',fmt:'time'},{key:'extra',label:'Extras',fmt:'time'},{key:'sabado',label:'Sábados',fmt:'time'},{key:'ft',label:'Fer. trab',fmt:'num'},{key:'fnt',label:'Fer. no trab',fmt:'num'},{key:'pn',label:'$ Normal',fmt:'num'},{key:'px',label:'$ Extra',fmt:'num'},{key:'ps',label:'$ Sábado',fmt:'num'},{key:'pf',label:'$ Feriado',fmt:'num'},{key:'desc',label:'Descuentos',fmt:'num'},{key:'total',label:'Total',fmt:'num'}],filas,totales:{empleado:'Total',normal:T('totNormal'),extra:T('totExtra'),sabado:T('totSabado'),ft:T('feriadosTrab'),fnt:T('feriadosNoTrab'),pn:T('pagoNormal'),px:T('pagoExtra'),ps:T('pagoSabado'),pf:T('pagoFeriado'),desc:T('descTotal'),total:T('total')}}],
     archivo:'Liquidacion_taller_'+m.desde+'_'+m.hasta};
 }
