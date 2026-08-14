@@ -868,7 +868,7 @@
 let db=null;
 try{db=window.supabase.createClient('https://tmouwzrtjbvqyiloyods.supabase.co','sb_publishable_BqHXaXmGl0Px27THUtLcJQ_anBXItji');}catch(e){console.error('Supabase init',e);}
 /* ── datos ── */
-let IMPRESORES=[],EQUIPO=[],EMPLEADOS=[];  // se cargan desde la tabla empleados (Maestro)
+let IMPRESORES=[],EQUIPO=[],EQUIPO_LIQ=[],EMPLEADOS=[];  // EQUIPO=todos los activos (carga de pedidos/admin); EQUIPO_LIQ=los que fichan/liquidan (sin dueños)
 const PRODUCTOS=[
   {id:'fris',name:'Friselina',solvAuto:false,med:['Palanca autos','15×20 riñón','20×30 riñón','20×40 riñón','30×40 riñón','30×30 riñón','30×30 asas','30×40 asas','40×40 asas','45×40 asas','60×40 asas']},
   {id:'poli',name:'Polietileno',solvAuto:true,med:['15×20','20×30','25×35','30×40','35×45','40×50']},
@@ -912,7 +912,7 @@ let fichajes={};
 function hmStr(o){return String(o.h).padStart(2,'0')+':'+String(o.m).padStart(2,'0');}
 function refreshFich(){const a=Object.values(fichajes).filter(f=>f.estado==='adentro').length;const c=$('#fichCount');if(c)c.textContent=a+' fichados';}
 $('#fichBtn').onclick=()=>{buildFich();show('scFichaje');};
-function buildFich(){const g=$('#fichGrid');g.innerHTML='';EQUIPO.forEach(n=>{const f=fichajes[n];const dentro=f&&f.estado==='adentro';const b=document.createElement('button');b.className='tile fichtile'+(dentro?' in':'');b.innerHTML=dentro?`${n}<small>adentro · ${f.desde}</small>`:`${n}<small>tocar para entrar</small>`;b.onclick=()=>toggleFich(n);g.appendChild(b);});}
+function buildFich(){const g=$('#fichGrid');g.innerHTML='';EQUIPO_LIQ.forEach(n=>{const f=fichajes[n];const dentro=f&&f.estado==='adentro';const b=document.createElement('button');b.className='tile fichtile'+(dentro?' in':'');b.innerHTML=dentro?`${n}<small>adentro · ${f.desde}</small>`:`${n}<small>tocar para entrar</small>`;b.onclick=()=>toggleFich(n);g.appendChild(b);});}
 function toggleFich(n){const d=new Date();const now={h:d.getHours(),m:d.getMinutes()};let f=fichajes[n]||{estado:'afuera',desde:null,eventos:[]};let tipo,hora;if(f.estado!=='adentro'){hora=hmStr(now);tipo='entrada';f.estado='adentro';f.desde=hora;f.eventos.push({tipo,hhmm:hora});}else{hora=hmStr(now);tipo='salida';f.estado='afuera';f.eventos.push({tipo,hhmm:hora});f.desde=null;}fichajes[n]=f;buildFich();refreshFich();saveFichaje(n,tipo,hora);}
 
 /* ── operarios ── */
@@ -1079,6 +1079,7 @@ async function loadEmpleados(){
     const dn=e=>e.nombre+(e.apellido?' '+e.apellido:'');
     IMPRESORES=EMPLEADOS.filter(e=>e.imprime).map(dn);
     EQUIPO=EMPLEADOS.map(dn);
+    EQUIPO_LIQ=EMPLEADOS.filter(e=>e.liquida!==false).map(dn);
     ADMINS={};EMPLEADOS.forEach(e=>{if(e.pin)ADMINS[String(e.pin)]=dn(e);});
   }catch(err){console.error('loadEmpleados',err);}
 }
@@ -1130,7 +1131,7 @@ function renderAdmin(){
   $('#adAguaF').textContent=aguaIF.toLocaleString('es-AR');$('#adSolvF').textContent=solvIF.toLocaleString('es-AR');
   $('#adAguaFP').textContent=ttF?Math.round(aguaIF/ttF*100)+'%':'—';$('#adSolvFP').textContent=ttF?Math.round(solvIF/ttF*100)+'%':'—';
   $('#adTipoBolsa').innerHTML=rankBars(tb);$('#adBolsa').innerHTML=rankBarsGrupo(bcg);$('#adTinta').innerHTML=rankBars(tc,TINTA_SW);
-  $('#adPresentes').innerHTML=EQUIPO.map(n=>{const f=fichajes[n];const inn=f&&f.estado==='adentro';return `<div class="prez${inn?' in':''}">${n}${inn?`<small>${f.desde}</small>`:''}</div>`;}).join('');
+  $('#adPresentes').innerHTML=EQUIPO_LIQ.map(n=>{const f=fichajes[n];const inn=f&&f.estado==='adentro';return `<div class="prez${inn?' in':''}">${n}${inn?`<small>${f.desde}</small>`:''}</div>`;}).join('');
   renderHoras();renderFeriados();
   const pr=sesion.pedidos.map((p,i)=>{const tot=p.lineas.reduce((a,l)=>a+l.qty,0);return `<div class="adped"><div class="adpedinfo"><b>#${p.numero}</b> · ${p.operario}${p.compartido?' · compartido':''}<small>${tot.toLocaleString('es-AR')} bolsas</small></div><button class="adpeddel" data-i="${i}">✕</button></div>`;});
   $('#adPedidos').innerHTML=pr.length?pr.reverse().join(''):'<div class="admuted">Sin pedidos cargados.</div>';
@@ -1742,7 +1743,7 @@ const LiqService={
     const ferList=feriadosEnRango(desde,hasta);const numFer=ferList.length;
     const map={};h.empleados.forEach(e=>map[e.empleado]=e);
     const vacio=n=>({empleado:n,dias:[],totNormal:0,totExtra:0,totSabado:0,feriadosTrab:0,diasTrab:0,totMin:0});
-    (EQUIPO||[]).forEach(n=>{if(!map[n])map[n]=vacio(n);});                 // roster: todos cobran el feriado aunque no fichen
+    (EQUIPO_LIQ||[]).forEach(n=>{if(!map[n])map[n]=vacio(n);});                 // roster de nómina (sin dueños): todos cobran el feriado aunque no fichen
     Object.keys(desc).forEach(op=>{if(!map[op])map[op]=vacio(op);});
     let empleados=Object.values(map);
     empleados.forEach(e=>{
@@ -1971,7 +1972,7 @@ function workedMin(eventos){const evs=(eventos||[]).slice().sort((a,b)=>String(a
 function fmtHM(m){return Math.floor(m/60)+'h '+String(m%60).padStart(2,'0')+'m';}
 function renderHoras(){
   const today=new Date();const dow=today.getDay();const allExtra=(dow===0||dow===6||isFeriado(today));
-  const rows=EQUIPO.map(n=>{const f=fichajes[n];if(!f||!f.eventos||!f.eventos.length)return null;const w=workedMin(f.eventos);let norm,ext;if(allExtra){norm=0;ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}return{n,w,norm,ext};}).filter(Boolean).sort((a,b)=>b.w-a.w);
+  const rows=EQUIPO_LIQ.map(n=>{const f=fichajes[n];if(!f||!f.eventos||!f.eventos.length)return null;const w=workedMin(f.eventos);let norm,ext;if(allExtra){norm=0;ext=w;}else{norm=Math.min(w,360);ext=Math.max(0,w-360);}return{n,w,norm,ext};}).filter(Boolean).sort((a,b)=>b.w-a.w);
   const tag=$('#adHorasTag');if(tag)tag.textContent=allExtra?((dow===0||dow===6)?'fin de semana · todo extra':'feriado · todo extra'):'L-V · 6h normal + resto extra';
   const el=$('#adHoras');if(el)el.innerHTML=rows.length?rows.map(r=>`<div class="horarow"><span class="hn">${r.n}</span><span class="hv">${fmtHM(r.norm)} <span class="hnm">normal</span> · <b>${fmtHM(r.ext)} extra</b></span></div>`).join(''):'<div class="admuted">Nadie fichó todavía hoy.</div>';
 }
@@ -2109,8 +2110,8 @@ $('#accBack')&&($('#accBack').onclick=()=>show('scAdmin',false));
 async function renderAccesos(){
   const cont=$('#accList');cont.innerHTML='<div class="admuted" style="padding:16px">Cargando…</div>';
   let acc={};try{const {data}=await db.from('est_accesos').select('*');(data||[]).forEach(r=>acc[r.operario]=r);}catch(e){console.error('accesos',e);}
-  if(!EQUIPO.length){cont.innerHTML='<div class="admuted" style="padding:16px">No hay empleados cargados.</div>';return;}
-  cont.innerHTML=EQUIPO.map(n=>{const a=acc[n];const estado=!a?'Sin generar':(a.activo?'Activo':'Revocado');
+  if(!EQUIPO_LIQ.length){cont.innerHTML='<div class="admuted" style="padding:16px">No hay empleados cargados.</div>';return;}
+  cont.innerHTML=EQUIPO_LIQ.map(n=>{const a=acc[n];const estado=!a?'Sin generar':(a.activo?'Activo':'Revocado');
     return `<div class="adcard"><div class="adh">${esc(n)}<small>Acceso: ${estado}</small></div><div class="adbd"><div class="accbtns">
       ${a&&a.activo?`<button class="accb copy" data-t="${a.token}">📋 Copiar link</button><button class="accb wa" data-t="${a.token}">🟢 WhatsApp</button>`:''}
       <button class="accb gen" data-n="${esc(n)}">${a?'♻️ Regenerar':'➕ Generar link'}</button>
@@ -2182,7 +2183,7 @@ function rangoDe(key){const now=new Date();const y=now.getFullYear(),mo=now.getM
 function fmtFechaLarga(iso){const p=iso.split('-').map(Number);return p[2]+' de '+H_MES[p[1]-1].toLowerCase()+' de '+p[0];}
 function fmtPeriodo(desde,hasta){if(desde===hasta)return fmtFechaLarga(desde);const a=desde.split('-'),b=hasta.split('-');if(a[0]===b[0]&&a[1]===b[1])return Number(a[2])+' al '+Number(b[2])+' de '+H_MES[+a[1]-1].toLowerCase()+' de '+a[0];return fmtFechaLarga(desde)+' al '+fmtFechaLarga(hasta);}
 let resPeriodo='semana',resLastBlob=null;
-$('#resBtn')&&($('#resBtn').onclick=()=>{$('#resEmp').innerHTML=EQUIPO.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');$('#resOut').style.display='none';show('scResumen');});
+$('#resBtn')&&($('#resBtn').onclick=()=>{$('#resEmp').innerHTML=EQUIPO_LIQ.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');$('#resOut').style.display='none';show('scResumen');});
 $('#resBack')&&($('#resBack').onclick=()=>show('scAdmin',false));
 $('#resTabs')&&$('#resTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...$('#resTabs').children].forEach(x=>x.classList.toggle('on',x===b));resPeriodo=b.dataset.r;$('#resCustom').style.display=resPeriodo==='custom'?'block':'none';});
 $('#resGen')&&($('#resGen').onclick=async()=>{
