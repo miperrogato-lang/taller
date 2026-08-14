@@ -869,6 +869,8 @@ let db=null;
 try{db=window.supabase.createClient('https://tmouwzrtjbvqyiloyods.supabase.co','sb_publishable_BqHXaXmGl0Px27THUtLcJQ_anBXItji');}catch(e){console.error('Supabase init',e);}
 /* ── datos ── */
 let IMPRESORES=[],EQUIPO=[],EQUIPO_LIQ=[],EMPLEADOS=[];  // EQUIPO=todos los activos (carga de pedidos/admin); EQUIPO_LIQ=los que fichan/liquidan (sin dueños)
+const NO_LIQUIDABLE=['alfonso'];  // dueños EXCLUIDOS de la liquidación (solo por nombre). NO afecta admin, permisos, accesos ni carga de pedidos.
+function esNoLiquidable(nombre){const n=String(nombre||'').trim().toLowerCase();return NO_LIQUIDABLE.some(x=>n===x||n.startsWith(x+' '));}
 const PRODUCTOS=[
   {id:'fris',name:'Friselina',solvAuto:false,med:['Palanca autos','15×20 riñón','20×30 riñón','20×40 riñón','30×40 riñón','30×30 riñón','30×30 asas','30×40 asas','40×40 asas','45×40 asas','60×40 asas']},
   {id:'poli',name:'Polietileno',solvAuto:true,med:['15×20','20×30','25×35','30×40','35×45','40×50']},
@@ -1079,7 +1081,7 @@ async function loadEmpleados(){
     const dn=e=>e.nombre+(e.apellido?' '+e.apellido:'');
     IMPRESORES=EMPLEADOS.filter(e=>e.imprime).map(dn);
     EQUIPO=EMPLEADOS.map(dn);
-    EQUIPO_LIQ=EMPLEADOS.filter(e=>e.liquida!==false).map(dn);
+    EQUIPO_LIQ=EMPLEADOS.filter(e=>e.liquida!==false&&!esNoLiquidable(dn(e))).map(dn);
     ADMINS={};EMPLEADOS.forEach(e=>{if(e.pin)ADMINS[String(e.pin)]=dn(e);});
   }catch(err){console.error('loadEmpleados',err);}
 }
@@ -1745,7 +1747,7 @@ const LiqService={
     const vacio=n=>({empleado:n,dias:[],totNormal:0,totExtra:0,totSabado:0,feriadosTrab:0,diasTrab:0,totMin:0});
     (EQUIPO_LIQ||[]).forEach(n=>{if(!map[n])map[n]=vacio(n);});                 // roster de nómina (sin dueños): todos cobran el feriado aunque no fichen
     Object.keys(desc).forEach(op=>{if(!map[op])map[op]=vacio(op);});
-    let empleados=Object.values(map);
+    let empleados=Object.values(map).filter(e=>!esNoLiquidable(e.empleado));   // Alfonso (dueño) fuera de la liquidación: no suma horas, ni total, ni comprobante
     empleados.forEach(e=>{
       e.totSabado=e.totSabado||0;e.feriadosTrab=e.feriadosTrab||0;
       e.feriadosNoTrab=Math.max(0,numFer-e.feriadosTrab);
