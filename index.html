@@ -912,9 +912,20 @@ $('#startBtn').onclick=()=>{cur={operario:null,numero:null,compartido:false,prev
 
 /* ── fichaje ── */
 let fichajes={};
+// Trae los fichajes de HOY desde la nube y reconstruye el estado. Reutilizable:
+// se llama al iniciar, al abrir la pantalla de Fichaje y al abrir el panel admin.
+async function loadFichajesHoy(){
+  if(!db)return;
+  try{
+    const t=new Date();
+    const todayISO=new Date(t.getFullYear(),t.getMonth(),t.getDate()).toISOString().slice(0,10);
+    const {data:fs}=await db.from('est_fichajes').select('*').eq('fecha',todayISO).order('created_at',{ascending:true});
+    if(fs){fichajes={};fs.forEach(e=>{const f=fichajes[e.operario]||{estado:'afuera',desde:null,eventos:[]};if(e.tipo==='entrada'){f.estado='adentro';f.desde=e.hora;}else{f.estado='afuera';f.desde=null;}f.eventos.push({tipo:e.tipo,hhmm:e.hora});fichajes[e.operario]=f;});}
+  }catch(e){console.error('loadFichajesHoy',e);}
+}
 function hmStr(o){return String(o.h).padStart(2,'0')+':'+String(o.m).padStart(2,'0');}
 function refreshFich(){const a=Object.values(fichajes).filter(f=>f.estado==='adentro').length;const c=$('#fichCount');if(c)c.textContent=a+' fichados';}
-$('#fichBtn').onclick=()=>{buildFich();show('scFichaje');};
+$('#fichBtn').onclick=async()=>{show('scFichaje');buildFich();await loadFichajesHoy();buildFich();refreshFich();};
 function buildFich(){const g=$('#fichGrid');g.innerHTML='';EQUIPO_LIQ.forEach(n=>{const f=fichajes[n];const dentro=f&&f.estado==='adentro';const b=document.createElement('button');b.className='tile fichtile'+(dentro?' in':'');b.innerHTML=dentro?`${n}<small>adentro · ${f.desde}</small>`:`${n}<small>tocar para entrar</small>`;b.onclick=()=>toggleFich(n);g.appendChild(b);});}
 function toggleFich(n){const d=new Date();const now={h:d.getHours(),m:d.getMinutes()};let f=fichajes[n]||{estado:'afuera',desde:null,eventos:[]};let tipo,hora;if(f.estado!=='adentro'){hora=hmStr(now);tipo='entrada';f.estado='adentro';f.desde=hora;f.eventos.push({tipo,hhmm:hora});}else{hora=hmStr(now);tipo='salida';f.estado='afuera';f.eventos.push({tipo,hhmm:hora});f.desde=null;}fichajes[n]=f;buildFich();refreshFich();saveFichaje(n,tipo,hora);}
 
@@ -1099,7 +1110,7 @@ $$('.pinkey').forEach(k=>k.onclick=()=>{
   if(pinVal.length<4)pinVal+=v;
   $('#pinDisp').textContent=pinTxt();
   if(pinVal.length===4){const who=ADMINS[pinVal];
-    if(who){setTimeout(()=>{$('#ovPin').classList.remove('on');adminWho=who;$('#adWho').textContent=who;renderAdmin();show('scAdmin');startAdminRefresh();pinVal='';},160);}
+    if(who){setTimeout(async()=>{$('#ovPin').classList.remove('on');adminWho=who;$('#adWho').textContent=who;renderAdmin();show('scAdmin');startAdminRefresh();pinVal='';await loadData();renderAdmin();},160);}
     else{$('#pinMsg').textContent='Código incorrecto';setTimeout(()=>{pinVal='';$('#pinDisp').textContent=pinTxt();$('#pinMsg').textContent='';},900);}}
 });
 let adminTimer=null;
@@ -1963,8 +1974,7 @@ async function loadData(){
     const {data:peds}=await db.from('est_pedidos').select('*, est_lineas(*)').gte('created_at',start).order('created_at',{ascending:true});
     if(peds)sesion.pedidos=peds.map(p=>({id:p.id,numero:p.numero,operario:p.operario,compartido:p.compartido,estado:p.estado,impresiones:p.impresiones,lineas:(p.est_lineas||[]).map(l=>({prod:l.producto,med:l.medida,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras,colores:l.colores,qty:l.cantidad}))}));
     const todayISO=start.slice(0,10);
-    const {data:fs}=await db.from('est_fichajes').select('*').eq('fecha',todayISO).order('created_at',{ascending:true});
-    if(fs){fichajes={};fs.forEach(e=>{const f=fichajes[e.operario]||{estado:'afuera',desde:null,eventos:[]};if(e.tipo==='entrada'){f.estado='adentro';f.desde=e.hora;}else{f.estado='afuera';f.desde=null;}f.eventos.push({tipo:e.tipo,hhmm:e.hora});fichajes[e.operario]=f;});}
+    await loadFichajesHoy();
     try{const {data:fe}=await db.from('est_feriados').select('*').order('fecha');feriadosDB=fe||[];}catch(e){}
     refreshHome();loadAvisos();
   }catch(err){console.error('loadData',err);}
