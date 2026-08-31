@@ -435,6 +435,7 @@
         <button class="hero-btn half dark" id="startBtn">Cargar pedido</button>
       </div>
       <button class="buscarbtn" id="buscarBtn">Buscar pedido</button>
+      <button class="buscarbtn" id="stockBtn">📦 Stock</button>
       <div class="avisos" id="homeAvisos" style="display:none"></div>
       <div class="home-stats">
         <button class="st stbtn" id="pedHoyBtn"><div class="v num" id="hPed">0</div><div class="k">Pedidos hoy ›</div></button>
@@ -926,6 +927,7 @@ async function loadFichajesHoy(){
 function hmStr(o){return String(o.h).padStart(2,'0')+':'+String(o.m).padStart(2,'0');}
 function refreshFich(){const a=Object.values(fichajes).filter(f=>f.estado==='adentro').length;const c=$('#fichCount');if(c)c.textContent=a+' fichados';}
 $('#fichBtn').onclick=async()=>{show('scFichaje');buildFich();await loadFichajesHoy();buildFich();refreshFich();};
+$('#stockBtn').onclick=()=>{window.open('https://stock-silk-chi-22.vercel.app','_blank');};
 function buildFich(){const g=$('#fichGrid');g.innerHTML='';EQUIPO_LIQ.forEach(n=>{const f=fichajes[n];const dentro=f&&f.estado==='adentro';const b=document.createElement('button');b.className='tile fichtile'+(dentro?' in':'');b.innerHTML=dentro?`${n}<small>adentro · ${f.desde}</small>`:`${n}<small>tocar para entrar</small>`;b.onclick=()=>toggleFich(n);g.appendChild(b);});}
 function toggleFich(n){const d=new Date();const now={h:d.getHours(),m:d.getMinutes()};let f=fichajes[n]||{estado:'afuera',desde:null,eventos:[]};let tipo,hora;if(f.estado!=='adentro'){hora=hmStr(now);tipo='entrada';f.estado='adentro';f.desde=hora;f.eventos.push({tipo,hhmm:hora});}else{hora=hmStr(now);tipo='salida';f.estado='afuera';f.eventos.push({tipo,hhmm:hora});f.desde=null;}fichajes[n]=f;buildFich();refreshFich();saveFichaje(n,tipo,hora);}
 
