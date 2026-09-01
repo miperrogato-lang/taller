@@ -715,6 +715,7 @@
         <div class="sect"><h2 class="step" data-n="2">Tipo de bolsa</h2><div class="grid c2" id="gProd"></div></div>
         <div class="sect" id="secMed" style="display:none"><h2 class="step" data-n="3">Medida</h2><div class="grid c3" id="gMed"></div></div>
         <div class="sect" id="secBolsa" style="display:none"><h2 class="step" data-n="4">Color de bolsa</h2><div class="grid c3" id="gBolsa"></div></div>
+        <div class="sect" id="secAsaNegra" style="display:none"><h2 class="step" data-n="4">Manija</h2><div class="grid c2" id="gAsaNegra"></div></div>
         <div class="sect" id="secTinta" style="display:none"><h2 class="step" data-n="5">Color de tinta</h2><div class="grid tint" id="gTinta"></div></div>
         <div class="sect" id="secTipo" style="display:none"><h2 class="step" data-n="6">Tipo de tinta</h2><div class="grid c2" id="gTipo"></div></div>
         <div class="sect" id="secQty" style="display:none"><h2 class="step" data-n="7">Cantidad</h2><div class="grid c3" id="gQty"></div></div>
@@ -878,16 +879,18 @@ let IMPRESORES=[],EQUIPO=[],EQUIPO_LIQ=[],EMPLEADOS=[];  // EQUIPO=todos los act
 const NO_LIQUIDABLE=['alfonso'];  // dueños EXCLUIDOS de la liquidación (solo por nombre). NO afecta admin, permisos, accesos ni carga de pedidos.
 function esNoLiquidable(nombre){const n=String(nombre||'').trim().toLowerCase();return NO_LIQUIDABLE.some(x=>n===x||n.startsWith(x+' '));}
 const PRODUCTOS=[
-  {id:'fris',name:'Friselina',solvAuto:false,med:['Palanca autos','15×20 riñón','20×30 riñón','20×40 riñón','30×40 riñón','30×30 riñón','30×30 asas','30×40 asas','40×40 asas','45×40 asas','60×40 asas']},
+  {id:'fris',name:'Friselina',solvAuto:false,med:['15×20 riñón','20×30 riñón','20×40 riñón','30×40 riñón','30×30 riñón','30×30 asas','30×40 asas','40×40 asas','45×40 asas','60×40 asas']},
   {id:'poli',name:'Polietileno',solvAuto:true,med:['15×20','20×30','25×35','30×40','35×45','40×50']},
   {id:'lam',name:'Laminadas',solvAuto:false,med:['20×30','30×30','45×40']},
   {id:'ecom',name:'E-Commerce',solvAuto:false,med:['20×35 +solapa','30×45 +solapa','45×55 +solapa']},
+  {id:'palanca',name:'Palanca auto',solvAuto:false,med:['Única']},
 ];
 const BOLSA={
   fris:[['Blanco','#ffffff'],['Negro','#222222'],['Crudo','#d9c9a3'],['Rosa','#f58fb4']],
   poli:[['Negra','#222222'],['Blanca','#ffffff'],['Cristal','#e8eef0']],
   lam:[['Plateado','#b9bec2']],
-  ecom:[['Blanca','#ffffff'],['Negra','#222222']]
+  ecom:[['Blanca','#ffffff'],['Negra','#222222']],
+  palanca:[['Blanca','#ffffff'],['Negra','#222222']]
 };
 const TINTAS=[['Blanco','#ffffff'],['Negro','#222222'],['Violeta','#6a2c8f'],['Azul Ultramar','#1a1ad6'],['Amarillo Limón','#f5e12a'],['Fucsia','#e5147f'],['Azul Real','#22366e'],['Amarillo Cromo','#f6b400'],['Rosa','#f58fb4'],['Marrón','#4a2e25'],['Naranja','#ef6d15'],['Verde Claro','#3ea63f'],['Gris','#5f6b72'],['Rojo','#e01b22'],['Verde Oscuro','#0e7a4f'],['Bordó','#8e1b1b'],['Celeste','#5fb6e6']];
 const TINTAS_ESP=[['Dorado','#c8963c'],['Plateado','#b9bec2']];
@@ -941,7 +944,7 @@ function buildWho(){const g=$('#whoGrid');g.innerHTML='';IMPRESORES.forEach(n=>{
 function pick(n){cur.operario=n;$('#whoName').textContent=n;startBuild();}
 
 /* ── armar ── */
-function newDraft(){draft={prod:null,med:null,bolsa:null,tinta:null,tinta2:null,tipo:null,caras:1,colores:1,qty:null};}
+function newDraft(){draft={prod:null,med:null,bolsa:null,tinta:null,tinta2:null,tipo:null,caras:1,colores:1,qty:null,asaNegra:false};}
 function startBuild(){newDraft();$('#lineBuilder').style.display=cur.numero?'block':'none';setPedidoField();renderPrevias();renderOptions();renderCart();show('scBuild');}
 $('#chgWho').onclick=()=>{buildWho();show('scWho');};
 
@@ -993,14 +996,22 @@ function renderOptions(){
   if(!cur.numero)return;
   // producto
   const gp=$('#gProd');gp.innerHTML='';
-  PRODUCTOS.forEach(p=>gp.appendChild(optBtn(p.name,draft.prod===p.id,()=>{draft.prod=p.id;draft.med=null;draft.bolsa=null;draft.tipo=null;renderOptions();})));
+  PRODUCTOS.forEach(p=>gp.appendChild(optBtn(p.name,draft.prod===p.id,()=>{draft.prod=p.id;draft.med=(p.med.length===1?p.med[0]:null);draft.bolsa=null;draft.tipo=null;renderOptions();})));
   const P=PRODUCTOS.find(p=>p.id===draft.prod);
-  $('#secMed').style.display=P?'block':'none';
+  $('#secMed').style.display=(P&&P.med.length>1)?'block':'none';
   if(P){const g=$('#gMed');g.innerHTML='';P.med.forEach(m=>g.appendChild(optBtn(m,draft.med===m,()=>{draft.med=m;renderOptions();})));}
   const ready=draft.prod&&draft.med;
-  ['#secBolsa','#secTinta','#secTipo','#secQty','#secEsp'].forEach(s=>$(s).style.display=ready?'block':'none');
+  ['#secBolsa','#secAsaNegra','#secTinta','#secTipo','#secQty','#secEsp'].forEach(s=>$(s).style.display=ready?'block':'none');
   if(ready){
     const gb=$('#gBolsa');gb.innerHTML='';(BOLSA[draft.prod]||[]).forEach(([n,c])=>gb.appendChild(optBtn(n,draft.bolsa===n,()=>{draft.bolsa=n;renderOptions();},c)));
+    // Manija: la "asa negra" solo aparece en friselina con asa, en blanca/crudo/rosa. Por defecto, asa del color.
+    const aplicaAsaNegra=draft.prod==='fris'&&/asas/i.test(draft.med||'')&&['Blanco','Crudo','Rosa'].includes(draft.bolsa);
+    if(aplicaAsaNegra){
+      $('#secAsaNegra').style.display='block';
+      const ga=$('#gAsaNegra');ga.innerHTML='';
+      ga.appendChild(optBtn('Asa del color',!draft.asaNegra,()=>{draft.asaNegra=false;renderOptions();}));
+      ga.appendChild(optBtn('Asa negra',draft.asaNegra,()=>{draft.asaNegra=true;renderOptions();}));
+    }else{$('#secAsaNegra').style.display='none';draft.asaNegra=false;}
     const gt=$('#gTinta');gt.innerHTML='';renderTintas(gt,'tinta');
     // tipo de tinta
     const gtp=$('#gTipo');gtp.innerHTML='';
@@ -1029,7 +1040,7 @@ function renderEsp(){
 }
 $('#espToggle').onclick=()=>{$('#espBody').classList.toggle('on');$('#espToggle').classList.toggle('open');};
 
-function lineTxt(l){const P=PRODUCTOS.find(p=>p.id===l.prod);const imp=l.caras*l.colores;const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;return{main:`${P.name} ${l.med}`,sub:`bolsa ${l.bolsa} · ${cols} · ${l.tipo} · ${l.caras}c/${l.colores}col · ${imp} impr.`};}
+function lineTxt(l){const P=PRODUCTOS.find(p=>p.id===l.prod);const imp=l.caras*l.colores;const cols=l.colores===2?`${l.tinta}+${l.tinta2}`:l.tinta;const medTxt=l.med==='Única'?'':(l.asaNegra?`${l.med} negras`:l.med);return{main:`${P.name}${medTxt?' '+medTxt:''}`,sub:`bolsa ${l.bolsa} · ${cols} · ${l.tipo} · ${l.caras}c/${l.colores}col · ${imp} impr.`};}
 function renderCart(){
   const list=$('#cartList');
   if(!cur.lineas.length){list.innerHTML='<div class="empty">'+(cur.numero?'Agregá la primera línea del pedido.':'Cargá el N° de pedido y agregá la primera línea.')+'</div>';}
@@ -1171,12 +1182,14 @@ $('#buscarBtn').onclick=()=>{$('#buscarField').className='pedidoField empty';$('
 $('#admBuscarBtn')&&($('#admBuscarBtn').onclick=()=>{$('#buscarField').className='pedidoField empty';$('#buscarVal').textContent='Tocá para ingresar';$('#buscarRes').innerHTML='';show('scBuscar');});
 $('#buscarField').onclick=()=>openPad('Buscar N° de pedido','',n=>{if(n>0)buscarPedido(n);});
 let _buscData=[];
-function snapshotPed(p){return {operario:p.operario,compartido:!!p.compartido,lineas:(p.lineas||[]).map(l=>({prod:l.prod,med:l.med,bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo,caras:l.caras,colores:l.colores,qty:l.qty}))};}
+// Reconstruye una línea leída de la base, reconociendo la marca "asas negras".
+function lineaDeDB(l){let med=l.medida||'',aN=false;if(/asas\s+negras\s*$/i.test(med)){aN=true;med=med.replace(/\s*negras\s*$/i,'');}return {prod:l.producto,med,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras||1,colores:l.colores||1,qty:l.cantidad,asaNegra:aN};}
+function snapshotPed(p){return {operario:p.operario,compartido:!!p.compartido,lineas:(p.lineas||[]).map(l=>({prod:l.prod,med:l.med,bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo,caras:l.caras,colores:l.colores,qty:l.qty,asaNegra:!!l.asaNegra}))};}
 function abrirEdicion(p){
   if(!adminWho){toastMsg('Solo administradores');return;}
   if(!p)return;
   cur={operario:p.operario,numero:p.numero,compartido:!!p.compartido,previas:[],editId:p.id,editCreated:p.created_at,
-    lineas:(p.est_lineas||[]).map(l=>({prod:l.producto,med:l.medida,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras||1,colores:l.colores||1,qty:l.cantidad}))};
+    lineas:(p.est_lineas||[]).map(lineaDeDB)};
   cur._orig=snapshotPed(cur);
   newDraft();
   $('#whoName').textContent=cur.operario;
@@ -1198,7 +1211,7 @@ async function guardarEdicion(ped){
     const impresiones=calcularImpresionesPedido(ped);
     await db.from('est_pedidos').update({operario:ped.operario,compartido:!!ped.compartido,impresiones}).eq('id',ped.editId);
     await db.from('est_lineas').delete().eq('pedido_id',ped.editId);
-    const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:ped.editId,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0,l)}));
+    const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:ped.editId,producto:l.prod,medida:(l.asaNegra?l.med+' negras':l.med),color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0,l)}));
     if(rows.length)await db.from('est_lineas').insert(rows);
     await dbInsert('auditoria',{id:uuid(),entidad:'pedido',entidad_id:String(ped.numero),accion:'modificar',detalle:{antes:ped._orig,despues:snapshotPed(ped),impresiones},usuario:adminWho||'admin'});
     await upsertOrden(ped);
@@ -1956,7 +1969,7 @@ async function savePedido(ped){
   if(!db)return;
   const pedId=uuid();ped.id=pedId;
   await dbInsert('est_pedidos',{id:pedId,numero:String(ped.numero),operario:ped.operario,compartido:!!ped.compartido,estado:'impreso',impresiones:calcularImpresionesPedido(ped)});
-  const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:pedId,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0,l)}));
+  const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:pedId,producto:l.prod,medida:(l.asaNegra?l.med+' negras':l.med),color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0,l)}));
   if(rows.length)await dbInsert('est_lineas',rows);
   upsertOrden(ped);
   aplicarStockPedido([],ped.lineas,ped.numero).then(info=>mostrarResultadoStock(info,ped.numero));  // descuenta del stock
@@ -2043,7 +2056,7 @@ async function loadData(){
   try{
     const t=new Date();const start=new Date(t.getFullYear(),t.getMonth(),t.getDate()).toISOString();
     const {data:peds}=await db.from('est_pedidos').select('*, est_lineas(*)').gte('created_at',start).order('created_at',{ascending:true});
-    if(peds)sesion.pedidos=peds.map(p=>({id:p.id,numero:p.numero,operario:p.operario,compartido:p.compartido,estado:p.estado,impresiones:p.impresiones,lineas:(p.est_lineas||[]).map(l=>({prod:l.producto,med:l.medida,bolsa:l.color_bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo:l.tipo_tinta,caras:l.caras,colores:l.colores,qty:l.cantidad}))}));
+    if(peds)sesion.pedidos=peds.map(p=>({id:p.id,numero:p.numero,operario:p.operario,compartido:p.compartido,estado:p.estado,impresiones:p.impresiones,lineas:(p.est_lineas||[]).map(lineaDeDB)}));
     const todayISO=start.slice(0,10);
     await loadFichajesHoy();
     try{const {data:fe}=await db.from('est_feriados').select('*').order('fecha');feriadosDB=fe||[];}catch(e){}
