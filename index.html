@@ -869,6 +869,10 @@
 /* ── Supabase ── */
 let db=null;
 try{db=window.supabase.createClient('https://tmouwzrtjbvqyiloyods.supabase.co','sb_publishable_BqHXaXmGl0Px27THUtLcJQ_anBXItji');}catch(e){console.error('Supabase init',e);}
+// Cliente de SOLO LECTURA hacia la base del stock (otra cuenta). Se usa para el "modo sombra":
+// muestra qué se descontaría del stock al cargar un pedido, sin escribir nada.
+let dbStock=null;
+try{dbStock=window.supabase.createClient('https://xkenvxiyjsiefaxaxgaa.supabase.co','sb_publishable_XAEML9QTi2k15rqDT82dqw_9c6cVrW2');}catch(e){console.error('Supabase stock init',e);}
 /* ── datos ── */
 let IMPRESORES=[],EQUIPO=[],EQUIPO_LIQ=[],EMPLEADOS=[];  // EQUIPO=todos los activos (carga de pedidos/admin); EQUIPO_LIQ=los que fichan/liquidan (sin dueños)
 const NO_LIQUIDABLE=['alfonso'];  // dueños EXCLUIDOS de la liquidación (solo por nombre). NO afecta admin, permisos, accesos ni carga de pedidos.
@@ -1949,6 +1953,48 @@ async function savePedido(ped){
   const rows=ped.lineas.map(l=>({id:uuid(),pedido_id:pedId,producto:l.prod,medida:l.med,color_bolsa:l.bolsa,tinta:l.tinta,tinta2:l.tinta2,tipo_tinta:l.tipo,caras:l.caras,colores:l.colores,cantidad:l.qty,puntos:puntosLinea(l.prod,l.med,l.qty||0,l)}));
   if(rows.length)await dbInsert('est_lineas',rows);
   upsertOrden(ped);
+  sombraStock(ped);   // MODO SOMBRA: muestra qué descontaría del stock (no escribe nada)
+}
+// ── MODO SOMBRA (prueba de descuento de stock) ──────────────────────────────
+// Solo poli y ecom por ahora. Lee la base del stock y muestra qué se descontaría.
+// NO modifica el stock. Cuando validemos que los números dan, se activa el descuento real.
+async function sombraStock(ped){
+  if(!dbStock||!ped||!ped.lineas)return;
+  const mapFamilia={poli:'Polietileno',ecom:'E-commerce'};
+  const items=ped.lineas.filter(l=>mapFamilia[l.prod]&&(l.qty||0)>0);
+  if(!items.length)return;
+  try{
+    const {data:prods}=await dbStock.from('bolsas_productos').select('id,familia,medida,color,manija').eq('activo',true);
+    const {data:stocks}=await dbStock.from('bolsas_stock').select('producto_id,cantidad');
+    if(!prods){console.error('sombra: sin catálogo');return;}
+    const stkById=Object.fromEntries((stocks||[]).map(s=>[s.producto_id,Number(s.cantidad)||0]));
+    const byKey=Object.fromEntries(prods.map(p=>[[p.familia,p.medida,p.color,p.manija].join('|'),p]));
+    const lineas=items.map(l=>{
+      const familia=mapFamilia[l.prod];
+      const medida=String(l.med||'').replace(/\s*\+\s*solapa\s*$/i,'').trim();  // ecom: sacar "+solapa"
+      const color=l.bolsa||'';
+      const prod=byKey[[familia,medida,color,'—'].join('|')];
+      const desc=l.qty||0;
+      if(!prod)return {texto:`⚠️ ${familia} ${medida} ${color} — no lo encuentro en el stock (revisar nombre)`,alerta:true};
+      const hay=stkById[prod.id]||0, queda=hay-desc;
+      return {texto:`${desc.toLocaleString('es-AR')} · ${familia} ${medida} ${color} — hay ${hay.toLocaleString('es-AR')}, quedarían ${queda.toLocaleString('es-AR')}`,alerta:queda<0};
+    });
+    mostrarSombra(lineas);
+  }catch(e){console.error('sombraStock',e);}
+}
+function mostrarSombra(lineas){
+  const filas=lineas.map(l=>`<div style="padding:8px 0;border-bottom:1px solid #eee;font-size:14px;color:${l.alerta?'#c2410c':'#17202a'}">${l.texto}</div>`).join('');
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:14px;padding:20px;max-width:520px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+    <div style="font-weight:700;font-size:16px;margin-bottom:2px">📦 Descuento de stock — modo prueba</div>
+    <div style="font-size:12px;color:#888;margin-bottom:12px">Esto es lo que se <b>descontaría</b> del stock (poli y e-commerce). Todavía <b>NO se aplica</b> — es solo para verificar que los números den bien.</div>
+    ${filas}
+    <button style="margin-top:16px;width:100%;padding:12px;border:0;border-radius:10px;background:#17202a;color:#fff;font-weight:700;cursor:pointer">Entendido</button>
+  </div>`;
+  ov.querySelector('button').onclick=()=>ov.remove();
+  ov.onclick=e=>{if(e.target===ov)ov.remove();};
+  document.body.appendChild(ov);
 }
 function impCargaRaw(c){const li=(c.est_lineas||[]).reduce((a,l)=>a+((l.cantidad)||0)*((l.caras)||1)*((l.colores)||1),0);return (c.impresiones&&c.impresiones>0)?c.impresiones:li;}
 function calcularImpresionesPedido(ped){const L=(ped&&(ped.lineas||ped.est_lineas))||[];return L.reduce((t,l)=>t+(((l.qty??l.cantidad)||0)*((l.caras)||1)*((l.colores)||1)),0);}
