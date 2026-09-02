@@ -437,6 +437,7 @@
       </div>
       <button class="buscarbtn" id="buscarBtn">Buscar pedido</button>
       <button class="buscarbtn" id="stockBtn">📦 Stock</button>
+      <button class="buscarbtn" id="ajusteBtn">➕➖ Ajustar stock</button>
       <div class="avisos" id="homeAvisos" style="display:none"></div>
       <div class="home-stats">
         <button class="st stbtn" id="pedHoyBtn"><div class="v num" id="hPed">0</div><div class="k">Pedidos hoy ›</div></button>
@@ -763,6 +764,23 @@
       <div class="actions">
         <button class="btn add" id="btnBack">‹ Seguir cargando</button>
         <button class="btn done" id="btnConfirm">✓ Confirmar</button>
+      </div>
+    </div>
+
+    <!-- AJUSTE DE STOCK -->
+    <div class="screen" id="scAjuste">
+      <div class="who"><span>👤</span><span class="n" id="ajWhoName">—</span><button class="chg" id="ajChgWho">cambiar</button></div>
+      <div class="sect" id="ajSecWho"><h2 class="step" data-n="1">¿Quién ajusta?</h2><div class="grid names" id="ajWhoGrid"></div></div>
+      <div id="ajBuilder" style="display:none">
+        <div class="sect"><h2 class="step" data-n="2">Tipo de bolsa</h2><div class="grid c2" id="ajProd"></div></div>
+        <div class="sect" id="ajSecMed" style="display:none"><h2 class="step" data-n="3">Medida</h2><div class="grid c3" id="ajMed"></div></div>
+        <div class="sect" id="ajSecBolsa" style="display:none"><h2 class="step" data-n="4">Color de bolsa</h2><div class="grid c3" id="ajBolsa"></div></div>
+        <div class="sect" id="ajSecAsa" style="display:none"><h2 class="step" data-n="4">Manija</h2><div class="grid c2" id="ajAsa"></div></div>
+        <div class="sect" id="ajSecQty" style="display:none"><h2 class="step" data-n="5">Cantidad</h2><div class="grid c3" id="ajQty"></div></div>
+        <div class="sect" id="ajSecMov" style="display:none"><h2 class="step" data-n="6">¿Qué hacés?</h2><div class="grid c2" id="ajMov"></div></div>
+      </div>
+      <div class="actions">
+        <button class="btn done" id="ajReview" disabled>Revisar ajuste ›</button>
       </div>
     </div>
   </div>
@@ -2062,6 +2080,118 @@ function mostrarResultadoStock(info,refPedido){
   ov.onclick=e=>{if(e.target===ov)ov.remove();};
   document.body.appendChild(ov);
 }
+/* ── Ajuste manual de stock (sacar / agregar) ── */
+let aj=null;
+function newAj(){aj={who:null,prod:null,med:null,bolsa:null,asaNegra:false,qty:null,mov:null};}
+function abrirAjuste(){
+  if(!dbStock){toastMsg('⚠ Sin conexión al stock');return;}
+  newAj();
+  $('#ajWhoName').textContent='—';
+  $('#ajSecWho').style.display='block';
+  $('#ajBuilder').style.display='none';
+  const g=$('#ajWhoGrid');g.innerHTML='';
+  (EQUIPO||[]).forEach(n=>{const b=tile(n,'nametile');b.onclick=()=>{aj.who=n;$('#ajWhoName').textContent=n;$('#ajSecWho').style.display='none';$('#ajBuilder').style.display='block';renderAjuste();};g.appendChild(b);});
+  show('scAjuste');
+}
+function renderAjuste(){
+  const gp=$('#ajProd');gp.innerHTML='';
+  PRODUCTOS.forEach(p=>gp.appendChild(optBtn(p.name,aj.prod===p.id,()=>{aj.prod=p.id;aj.med=null;aj.bolsa=null;aj.asaNegra=false;aj.qty=null;aj.mov=null;renderAjuste();})));
+  const P=PRODUCTOS.find(p=>p.id===aj.prod);
+  $('#ajSecMed').style.display=P?'block':'none';
+  if(P){const g=$('#ajMed');g.innerHTML='';P.med.forEach(m=>g.appendChild(optBtn(m,aj.med===m,()=>{aj.med=m;aj.bolsa=null;aj.asaNegra=false;aj.qty=null;aj.mov=null;renderAjuste();})));}
+  const ready=aj.prod&&aj.med;
+  $('#ajSecBolsa').style.display=ready?'block':'none';
+  if(ready){
+    let colores=BOLSA[aj.prod]||[];
+    if(aj.prod==='fris'&&FRIS[aj.med])colores=colores.filter(([n])=>FRIS[aj.med].c.includes(n));
+    if(aj.bolsa&&!colores.some(([n])=>n===aj.bolsa))aj.bolsa=null;
+    const gb=$('#ajBolsa');gb.innerHTML='';colores.forEach(([n,c])=>gb.appendChild(optBtn(n,aj.bolsa===n,()=>{aj.bolsa=n;renderAjuste();},c)));
+    const aplicaAsa=aj.prod==='fris'&&FRIS[aj.med]&&(FRIS[aj.med].an||[]).includes(aj.bolsa);
+    if(aplicaAsa){$('#ajSecAsa').style.display='block';const ga=$('#ajAsa');ga.innerHTML='';ga.appendChild(optBtn('Asa del color',!aj.asaNegra,()=>{aj.asaNegra=false;renderAjuste();}));ga.appendChild(optBtn('Asa negra',aj.asaNegra,()=>{aj.asaNegra=true;renderAjuste();}));}
+    else{$('#ajSecAsa').style.display='none';aj.asaNegra=false;}
+  }
+  const hasBolsa=ready&&aj.bolsa;
+  $('#ajSecQty').style.display=hasBolsa?'block':'none';
+  if(hasBolsa){const gq=$('#ajQty');gq.innerHTML='';QTY.forEach(q=>gq.appendChild(optBtn(q.toLocaleString('es-AR'),aj.qty===q,()=>{aj.qty=q;renderAjuste();})));gq.appendChild(optBtn(aj.qty&&!QTY.includes(aj.qty)?('Otro: '+aj.qty):'Otro…',aj.qty&&!QTY.includes(aj.qty),()=>openPad('Cantidad',aj.qty&&!QTY.includes(aj.qty)?aj.qty:'',n=>{if(n>0)aj.qty=n;renderAjuste();}),null,'otros'));}
+  $('#ajSecMov').style.display=(hasBolsa&&aj.qty)?'block':'none';
+  if(hasBolsa&&aj.qty){const gm=$('#ajMov');gm.innerHTML='';
+    const bAdd=optBtn('➕ Agregar',aj.mov==='add',()=>{aj.mov='add';renderAjuste();});
+    const bDel=optBtn('➖ Sacar',aj.mov==='del',()=>{aj.mov='del';renderAjuste();});
+    if(aj.mov==='add')bAdd.style.cssText+=';background:#0e7a4f;border-color:#0e7a4f;color:#fff';
+    if(aj.mov==='del')bDel.style.cssText+=';background:#b91c1c;border-color:#b91c1c;color:#fff';
+    gm.appendChild(bAdd);gm.appendChild(bDel);
+  }
+  $('#ajReview').disabled=!(aj.who&&aj.prod&&aj.med&&aj.bolsa&&aj.qty&&aj.mov);
+}
+function ajBolsaNombre(){
+  const m=mapLinea({prod:aj.prod,med:aj.med,bolsa:aj.bolsa,asaNegra:aj.asaNegra});
+  if(!m)return null;
+  return `${m.familia} ${m.measure} ${m.color}${m.handle&&m.handle!=='—'?' '+m.handle:''}`;
+}
+function ajConfirmar(){
+  const esAdd=aj.mov==='add';
+  const accion=esAdd?'AGREGAR':'SACAR';
+  const color=esAdd?'#0e7a4f':'#b91c1c';
+  const nombreTxt=ajBolsaNombre()||(((PRODUCTOS.find(p=>p.id===aj.prod)||{}).name||'')+' '+aj.med+' '+aj.bolsa);
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:14px;padding:22px;max-width:460px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+    <div style="font-weight:800;font-size:17px;margin-bottom:14px">Confirmá el ajuste</div>
+    <div style="font-size:15px;line-height:1.7">
+      <div><b style="color:${color};font-size:22px">${accion} ${aj.qty.toLocaleString('es-AR')}</b></div>
+      <div style="margin-top:6px">${nombreTxt}</div>
+      <div style="margin-top:6px;color:#666">Responsable: <b>${aj.who}</b></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button id="ajCancel" style="flex:1;padding:13px;border:2px solid #ddd;border-radius:10px;background:#fff;font-weight:700;cursor:pointer">Cancelar</button>
+      <button id="ajOk" style="flex:1;padding:13px;border:0;border-radius:10px;background:${color};color:#fff;font-weight:800;cursor:pointer">Confirmar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#ajCancel').onclick=()=>ov.remove();
+  ov.onclick=e=>{if(e.target===ov)ov.remove();};
+  ov.querySelector('#ajOk').onclick=async()=>{
+    const btn=ov.querySelector('#ajOk');btn.disabled=true;btn.textContent='Guardando…';
+    const r=await ajAplicar();
+    ov.remove();
+    ajResultado(r);
+  };
+}
+async function ajAplicar(){
+  try{
+    const {res,noEnc}=await resolverStock([{prod:aj.prod,med:aj.med,bolsa:aj.bolsa,asaNegra:aj.asaNegra,qty:aj.qty}]);
+    if((noEnc&&noEnc.length)||!Object.keys(res).length){return {estado:'noenc',nombre:ajBolsaNombre()||(aj.med+' '+aj.bolsa)};}
+    const id=Object.keys(res)[0];
+    const delta=aj.mov==='add'?aj.qty:-aj.qty;
+    const nota='Ajuste manual · '+(aj.mov==='add'?'Agregó':'Sacó')+' · '+aj.who;
+    const {data,error}=await dbStock.rpc('bolsas_mov_pedido',{p_producto_id:Number(id),p_delta:delta,p_nota:nota});
+    if(error)return {estado:'error',msg:error.message};
+    return {estado:'ok',delta,nuevo:Number(data),nombre:ajBolsaNombre()};
+  }catch(e){return {estado:'error',msg:String(e)};}
+}
+function ajResultado(r){
+  let inner='';
+  if(r.estado==='ok'){
+    const s=r.delta<0?'Se sacaron':'Se agregaron';
+    inner=`<div style="font-weight:800;font-size:17px;margin-bottom:8px">✓ Stock actualizado</div>
+      <div style="font-size:15px;line-height:1.7">${s} <b>${Math.abs(r.delta).toLocaleString('es-AR')}</b> · ${r.nombre}<br>Stock ahora: <b style="font-size:20px">${(r.nuevo||0).toLocaleString('es-AR')}</b>${r.nuevo<0?' ⚠️':''}</div>`;
+  }else if(r.estado==='noenc'){
+    inner=`<div style="font-weight:800;font-size:17px;margin-bottom:8px;color:#c2410c">⚠️ No se pudo ajustar</div>
+      <div style="font-size:14px;line-height:1.6">${r.nombre} todavía no está cargada en el stock, así que no se puede sumar ni restar. (Ej: palanca auto y laminadas aún no están.)</div>`;
+  }else{
+    inner=`<div style="font-weight:800;font-size:17px;margin-bottom:8px;color:#b91c1c">✖ Error</div><div style="font-size:14px">${r.msg||''}</div>`;
+  }
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:14px;padding:22px;max-width:460px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)">${inner}
+    <button id="ajDone" style="margin-top:18px;width:100%;padding:13px;border:0;border-radius:10px;background:#17202a;color:#fff;font-weight:800;cursor:pointer">Listo</button></div>`;
+  document.body.appendChild(ov);
+  const cerrar=()=>{ov.remove();if(r.estado!=='error'){scStack.length=0;scStack.push('scHome');show('scHome',false);}};
+  ov.querySelector('#ajDone').onclick=cerrar;
+}
+$('#ajReview').onclick=()=>ajConfirmar();
+$('#ajChgWho').onclick=()=>{aj.who=null;$('#ajWhoName').textContent='—';$('#ajSecWho').style.display='block';$('#ajBuilder').style.display='none';};
+$('#ajusteBtn').onclick=abrirAjuste;
 function impCargaRaw(c){const li=(c.est_lineas||[]).reduce((a,l)=>a+((l.cantidad)||0)*((l.caras)||1)*((l.colores)||1),0);return (c.impresiones&&c.impresiones>0)?c.impresiones:li;}
 function calcularImpresionesPedido(ped){const L=(ped&&(ped.lineas||ped.est_lineas))||[];return L.reduce((t,l)=>t+(((l.qty??l.cantidad)||0)*((l.caras)||1)*((l.colores)||1)),0);}
 function impresionesDe(p){if(p.impresiones&&p.impresiones>0)return p.impresiones;const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(((l.cantidad??l.qty)||0)*((l.caras)||1)*((l.colores)||1)),0);}
