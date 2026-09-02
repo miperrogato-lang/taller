@@ -891,6 +891,20 @@ const BOLSA={
   lam:[['Plateado','#b9bec2']],
   ecom:[['Blanca','#ffffff'],['Negra','#222222']]
 };
+// Matriz de friselina: qué colores trabaja cada medida (c) y en cuáles hay opción de asa negra (an).
+const FRIS={
+  '15×20 riñón':{c:['Blanco','Negro','Crudo','Rosa']},
+  '20×30 riñón':{c:['Blanco','Negro','Crudo','Rosa']},
+  '20×40 riñón':{c:['Blanco','Negro','Crudo']},
+  '30×40 riñón':{c:['Blanco','Negro','Crudo']},
+  '30×30 riñón':{c:['Rosa']},
+  '30×30 asas':{c:['Blanco','Negro','Crudo','Rosa'],an:['Blanco','Crudo','Rosa']},
+  '30×40 asas':{c:['Blanco','Negro','Crudo'],an:['Blanco','Crudo']},
+  '40×40 asas':{c:['Blanco','Negro','Crudo','Rosa'],an:['Blanco','Crudo','Rosa']},
+  '45×40 asas':{c:['Blanco','Negro','Crudo','Rosa'],an:['Blanco','Crudo','Rosa']},
+  '60×40 asas':{c:['Blanco','Negro','Crudo'],an:[]},
+  'Palanca auto':{c:['Blanco','Negro']}
+};
 const TINTAS=[['Blanco','#ffffff'],['Negro','#222222'],['Violeta','#6a2c8f'],['Azul Ultramar','#1a1ad6'],['Amarillo Limón','#f5e12a'],['Fucsia','#e5147f'],['Azul Real','#22366e'],['Amarillo Cromo','#f6b400'],['Rosa','#f58fb4'],['Marrón','#4a2e25'],['Naranja','#ef6d15'],['Verde Claro','#3ea63f'],['Gris','#5f6b72'],['Rojo','#e01b22'],['Verde Oscuro','#0e7a4f'],['Bordó','#8e1b1b'],['Celeste','#5fb6e6']];
 const TINTAS_ESP=[['Dorado','#c8963c'],['Plateado','#b9bec2']];
 const TIPO_TINTA=['Al agua','Solvente Eva Flex'];
@@ -1003,11 +1017,11 @@ function renderOptions(){
   ['#secBolsa','#secAsaNegra','#secTinta','#secTipo','#secQty','#secEsp'].forEach(s=>$(s).style.display=ready?'block':'none');
   if(ready){
     let colores=BOLSA[draft.prod]||[];
-    if(draft.prod==='fris'&&draft.med==='Palanca auto')colores=colores.filter(([n])=>n==='Blanco'||n==='Negro');
+    if(draft.prod==='fris'&&draft.med&&FRIS[draft.med])colores=colores.filter(([n])=>FRIS[draft.med].c.includes(n));
     if(draft.bolsa&&!colores.some(([n])=>n===draft.bolsa))draft.bolsa=null;
     const gb=$('#gBolsa');gb.innerHTML='';colores.forEach(([n,c])=>gb.appendChild(optBtn(n,draft.bolsa===n,()=>{draft.bolsa=n;renderOptions();},c)));
     // Manija: la "asa negra" solo aparece en friselina con asa, en blanca/crudo/rosa. Por defecto, asa del color.
-    const aplicaAsaNegra=draft.prod==='fris'&&/asas/i.test(draft.med||'')&&['Blanco','Crudo','Rosa'].includes(draft.bolsa);
+    const aplicaAsaNegra=draft.prod==='fris'&&FRIS[draft.med]&&(FRIS[draft.med].an||[]).includes(draft.bolsa);
     if(aplicaAsaNegra){
       $('#secAsaNegra').style.display='block';
       const ga=$('#gAsaNegra');ga.innerHTML='';
