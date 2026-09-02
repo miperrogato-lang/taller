@@ -1993,23 +1993,37 @@ async function savePedido(ped){
 // ── DESCUENTO DE STOCK POR PEDIDO (poli y e-commerce) ───────────────────────
 // Trabaja por diferencias: cargar descuenta, editar ajusta la diferencia, borrar devuelve.
 // Solo poli y ecom por ahora. Escribe en la base del stock vía RPC bolsas_mov_pedido.
+// Mapea una línea de pedido a su variante en el stock (familia, medida, color, manija).
+function mapLinea(l){
+  const prod=l.prod||l.producto;
+  const bolsa=l.bolsa||l.color_bolsa||'';
+  const med=String(l.med||l.medida||'');
+  if(prod==='poli')return {familia:'Polietileno',measure:med.trim(),color:bolsa,handle:'—'};
+  if(prod==='ecom')return {familia:'E-commerce',measure:med.replace(/\s*\+\s*solapa\s*$/i,'').trim(),color:bolsa,handle:'—'};
+  if(prod==='fris'){
+    const colMap={'Blanco':'Blanca','Negro':'Negra'};
+    const color=colMap[bolsa]||bolsa;
+    const asaNegra=l.asaNegra||/asas\s+negras\s*$/i.test(med);
+    const medClean=med.replace(/\s*negras\s*$/i,'').trim();
+    if(medClean==='Palanca auto')return null; // palanca auto: pendiente de armar en el stock
+    if(/riñón$/i.test(medClean))return {familia:'Friselina',measure:medClean.replace(/\s*riñón$/i,'').trim(),color,handle:'Riñón'};
+    if(/asas$/i.test(medClean))return {familia:'Friselina',measure:medClean.replace(/\s*asas$/i,'').trim(),color,handle:asaNegra?'Asa negra':'Asa'};
+  }
+  return null; // laminada u otros: todavía no descuenta
+}
 async function resolverStock(lineas){
-  const mapFamilia={poli:'Polietileno',ecom:'E-commerce'};
-  const items=(lineas||[]).filter(l=>mapFamilia[l.prod||l.producto]&&(((l.qty??l.cantidad))||0)>0);
+  const items=(lineas||[]).map(l=>({m:mapLinea(l),qty:(l.qty??l.cantidad)||0})).filter(x=>x.m&&x.qty>0);
   const res={},nombres={},noEnc=[];
   if(!items.length||!dbStock)return {res,nombres,noEnc};
   const {data:prods}=await dbStock.from('bolsas_productos').select('id,familia,medida,color,manija').eq('activo',true);
   if(!prods)return {res,nombres,noEnc};
   const byKey=Object.fromEntries(prods.map(p=>[[p.familia,p.medida,p.color,p.manija].join('|'),p]));
-  items.forEach(l=>{
-    const familia=mapFamilia[l.prod||l.producto];
-    const medida=String(l.med||l.medida||'').replace(/\s*\+\s*solapa\s*$/i,'').trim();
-    const color=l.bolsa||l.color_bolsa||'';
-    const qty=(l.qty??l.cantidad)||0;
-    const prod=byKey[[familia,medida,color,'—'].join('|')];
-    if(!prod){noEnc.push(`${familia} ${medida} ${color}`);return;}
+  items.forEach(({m,qty})=>{
+    const nombre=`${m.familia} ${m.measure} ${m.color}${m.handle&&m.handle!=='—'?' '+m.handle:''}`;
+    const prod=byKey[[m.familia,m.measure,m.color,m.handle].join('|')];
+    if(!prod){noEnc.push(nombre);return;}
     res[prod.id]=(res[prod.id]||0)+qty;
-    nombres[prod.id]=`${familia} ${medida} ${color}`;
+    nombres[prod.id]=nombre;
   });
   return {res,nombres,noEnc};
 }
