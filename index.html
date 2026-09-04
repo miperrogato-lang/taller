@@ -5,6 +5,9 @@
 <meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Estación de carga</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#FAFAFA; --surf:#FFFFFF; --ink:#222222; --gray:#8C8C8C; --amber:#FFC107;
@@ -13,7 +16,7 @@
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
   html,body{height:100%}
-  body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+  body{background:var(--bg);color:var(--ink);font-family:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
   .num{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
 
   .app{height:100%;max-width:900px;margin:0 auto;display:flex;flex-direction:column}
@@ -439,7 +442,6 @@
       <button class="buscarbtn" id="stockBtn">📦 Stock</button>
       <button class="buscarbtn" id="ajusteBtn">➕➖ Ajustar stock</button>
       <button class="buscarbtn" id="controlBtn">✅ Control de calidad</button>
-      <button class="buscarbtn" id="preciosBtn">💲 Precios</button>
       <div class="avisos" id="homeAvisos" style="display:none"></div>
       <div class="home-stats">
         <button class="st stbtn" id="pedHoyBtn"><div class="v num" id="hPed">0</div><div class="k">Pedidos hoy ›</div></button>
@@ -494,6 +496,7 @@
       <button class="histbtn" id="cfgBtn">Configuración de puntos ⚙️ ›</button>
       <button class="histbtn" id="admBuscarBtn">Buscar / editar pedido 🔎 ›</button>
       <button class="histbtn" id="avBtn">Centro de avisos 📢 ›</button>
+      <button class="histbtn" id="preciosBtn">Precios 💲 ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
