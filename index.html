@@ -2238,8 +2238,17 @@ function abrirControl(){
   $('#ccPedVal').textContent='Tocá para buscar';$('#ccPedBtn').className='pedidoField empty';
   $('#ccPedInfo').innerHTML='';
   const g=$('#ccWhoGrid');g.innerHTML='';
-  (EQUIPO||[]).forEach(n=>{const b=tile(n,'nametile');b.onclick=()=>{cc.who=n;cc.controlPor=n;$('#ccWhoName').textContent=n;$('#ccSecWho').style.display='none';$('#ccBody').style.display='block';$('#ccActions').style.display='flex';};g.appendChild(b);});
+  ccRenderWho(false);
   show('scControl');
+}
+function ccPickWho(n){cc.who=n;cc.controlPor=n;$('#ccWhoName').textContent=n;$('#ccSecWho').style.display='none';$('#ccBody').style.display='block';$('#ccActions').style.display='flex';}
+function ccRenderWho(full){
+  const g=$('#ccWhoGrid');g.innerHTML='';
+  if(full){(EQUIPO||[]).forEach(n=>{const b=tile(n,'nametile');b.onclick=()=>ccPickWho(n);g.appendChild(b);});return;}
+  const norm=s=>String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const pri=['Tomás','Lisandro Gil','Gian'].map(name=>(EQUIPO||[]).find(e=>norm(e)===norm(name))).filter(Boolean);
+  pri.forEach(n=>{const b=tile(n,'nametile');b.onclick=()=>ccPickWho(n);g.appendChild(b);});
+  const o=tile('Otros','nametile');o.onclick=()=>ccRenderWho(true);g.appendChild(o);
 }
 async function ccCargarPedido(n){
   cc.numero=String(n);cc.rows=[];
@@ -2355,7 +2364,7 @@ async function ccMetricas(){
 }
 $('#controlBtn').onclick=abrirControl;
 $('#ccPedBtn').onclick=()=>openPad('N° de pedido','',n=>{if(n>0)ccCargarPedido(n);});
-$('#ccChgWho').onclick=()=>{cc.who=null;$('#ccWhoName').textContent='—';$('#ccSecWho').style.display='block';$('#ccBody').style.display='none';$('#ccActions').style.display='none';};
+$('#ccChgWho').onclick=()=>{cc.who=null;$('#ccWhoName').textContent='—';$('#ccSecWho').style.display='block';$('#ccBody').style.display='none';$('#ccActions').style.display='none';ccRenderWho(false);};
 $('#ccSave').onclick=ccGuardar;
 $('#ccStatsBtn').onclick=ccMetricas;
 
