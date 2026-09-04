@@ -438,6 +438,8 @@
       <button class="buscarbtn" id="buscarBtn">Buscar pedido</button>
       <button class="buscarbtn" id="stockBtn">📦 Stock</button>
       <button class="buscarbtn" id="ajusteBtn">➕➖ Ajustar stock</button>
+      <button class="buscarbtn" id="controlBtn">✅ Control de calidad</button>
+      <button class="buscarbtn" id="preciosBtn">💲 Precios</button>
       <div class="avisos" id="homeAvisos" style="display:none"></div>
       <div class="home-stats">
         <button class="st stbtn" id="pedHoyBtn"><div class="v num" id="hPed">0</div><div class="k">Pedidos hoy ›</div></button>
@@ -782,6 +784,33 @@
       <div class="actions">
         <button class="btn done" id="ajReview" disabled>Revisar ajuste ›</button>
       </div>
+    </div>
+
+    <!-- CONTROL DE CALIDAD -->
+    <div class="screen" id="scControl">
+      <div class="who"><span>👤</span><span class="n" id="ccWhoName">—</span><button class="chg" id="ccChgWho">cambiar</button></div>
+      <div class="sect" id="ccSecWho"><h2 class="step" data-n="1">¿Quién carga el control?</h2><div class="grid names" id="ccWhoGrid"></div></div>
+      <div id="ccBody" style="display:none">
+        <button class="pedidoField empty" id="ccPedBtn"><span class="lbl">N° de pedido</span><span class="val" id="ccPedVal">Tocá para buscar</span></button>
+        <div id="ccPedInfo"></div>
+      </div>
+      <div class="actions" id="ccActions" style="display:none">
+        <button class="btn add" id="ccStatsBtn">📊 Métricas</button>
+        <button class="btn done" id="ccSave" disabled>Guardar control ›</button>
+      </div>
+    </div>
+
+    <!-- MÉTRICAS DE CONTROL -->
+    <div class="screen" id="scControlStats">
+      <h2>📊 Métricas de control</h2>
+      <div id="ccStatsBody"><div class="admuted" style="padding:16px">Cargando…</div></div>
+    </div>
+
+    <!-- PRECIOS -->
+    <div class="screen" id="scPrecios">
+      <h2>💲 Precios por medida</h2>
+      <div class="admuted" style="padding:2px 2px 10px">Costo en blanco y venta terminada, por unidad. El precio va por medida; abrí "Precio por color" solo donde una variante valga distinto (ej: friselina rosa).</div>
+      <div id="precBody"><div class="admuted" style="padding:16px">Cargando…</div></div>
     </div>
   </div>
 </div>
@@ -2192,6 +2221,215 @@ function ajResultado(r){
 $('#ajReview').onclick=()=>ajConfirmar();
 $('#ajChgWho').onclick=()=>{aj.who=null;$('#ajWhoName').textContent='—';$('#ajSecWho').style.display='block';$('#ajBuilder').style.display='none';};
 $('#ajusteBtn').onclick=abrirAjuste;
+
+/* ── Control de calidad / fallas (Etapa 1: registro + métricas, sin tocar stock) ── */
+let cc=null;
+function newCc(){cc={who:null,numero:null,rows:[],video:null,controlPor:null};}
+function abrirControl(){
+  if(!db){toastMsg('⚠ Sin conexión a la base');return;}
+  newCc();
+  $('#ccWhoName').textContent='—';
+  $('#ccSecWho').style.display='block';
+  $('#ccBody').style.display='none';
+  $('#ccActions').style.display='none';
+  $('#ccPedVal').textContent='Tocá para buscar';$('#ccPedBtn').className='pedidoField empty';
+  $('#ccPedInfo').innerHTML='';
+  const g=$('#ccWhoGrid');g.innerHTML='';
+  (EQUIPO||[]).forEach(n=>{const b=tile(n,'nametile');b.onclick=()=>{cc.who=n;cc.controlPor=n;$('#ccWhoName').textContent=n;$('#ccSecWho').style.display='none';$('#ccBody').style.display='block';$('#ccActions').style.display='flex';};g.appendChild(b);});
+  show('scControl');
+}
+async function ccCargarPedido(n){
+  cc.numero=String(n);cc.rows=[];
+  $('#ccPedVal').textContent='#'+n;$('#ccPedBtn').className='pedidoField set';
+  $('#ccPedInfo').innerHTML='<div class="admuted" style="padding:12px">Buscando…</div>';
+  try{
+    const {data,error}=await db.from('est_pedidos').select('*, est_lineas(*)').eq('numero',String(n)).order('created_at',{ascending:true});
+    if(error)throw error;
+    if(!data||!data.length){$('#ccPedInfo').innerHTML='<div class="admuted" style="padding:12px">No se encontró el pedido #'+n+'.</div>';$('#ccSave').disabled=true;return;}
+    const map={};
+    data.forEach(p=>{(p.est_lineas||[]).forEach(l=>{
+      const key=[p.operario,l.producto,l.medida,l.color_bolsa].join('|');
+      if(!map[key])map[key]={operario:p.operario,prod:l.producto,med:l.medida,bolsa:l.color_bolsa,total:0};
+      map[key].total+=(l.cantidad||0);
+    });});
+    cc.rows=Object.values(map).map(r=>({...r,desp:r.total,falt:0,sobr:0,mal:0,fab:0,obs:''}));
+    renderCc();
+  }catch(e){console.error('cc buscar',e);$('#ccPedInfo').innerHTML='<div class="admuted" style="padding:12px">Error al buscar.</div>';}
+}
+function ccChip(row,campo,label){
+  const v=row[campo]||0;
+  const b=document.createElement('button');
+  b.className='tile'+(v>0?' sel':'');
+  b.style.cssText='padding:8px 6px;font-size:12px;line-height:1.25';
+  b.innerHTML=`<span style="display:block;font-size:10px;color:var(--gray);font-weight:700">${label}</span><b style="font-size:16px">${v.toLocaleString('es-AR')}</b>`;
+  b.onclick=()=>openPad(label,v||'',x=>{row[campo]=x>0?x:0;renderCc();});
+  return b;
+}
+function renderCc(){
+  const cont=$('#ccPedInfo');cont.innerHTML='';
+  const P=id=>{const p=PRODUCTOS.find(x=>x.id===id);return p?p.name:id;};
+  cc.rows.forEach(row=>{
+    const card=document.createElement('div');card.className='bcard';card.style.marginTop='10px';
+    const h=document.createElement('div');h.className='bch';
+    h.innerHTML=`<span><b>${P(row.prod)} ${row.med}</b> · ${row.bolsa||'—'}</span><span>Pedido: ${row.total.toLocaleString('es-AR')} · ${row.operario}</span>`;
+    card.appendChild(h);
+    const grid=document.createElement('div');grid.className='grid c3';grid.style.marginTop='8px';
+    grid.appendChild(ccChip(row,'desp','Despachadas'));
+    grid.appendChild(ccChip(row,'sobr','Sobran'));
+    grid.appendChild(ccChip(row,'falt','Faltan'));
+    grid.appendChild(ccChip(row,'mal','Mal impresas'));
+    grid.appendChild(ccChip(row,'fab','Falla fábrica'));
+    const obs=document.createElement('button');obs.className='tile'+(row.obs?' sel':'');obs.style.cssText='padding:8px 6px;font-size:12px';
+    obs.innerHTML=`<span style="display:block;font-size:10px;color:var(--gray);font-weight:700">Obs.</span><b style="font-size:12px">${row.obs?'✎ ver':'＋'}</b>`;
+    obs.onclick=()=>{const t=prompt('Observaciones (opcional):',row.obs||'');if(t!==null){row.obs=t.trim();renderCc();}};
+    grid.appendChild(obs);
+    card.appendChild(grid);
+    cont.appendChild(card);
+  });
+  const foot=document.createElement('div');foot.className='bcard';foot.style.marginTop='10px';
+  foot.innerHTML='<div class="bch"><span>Cierre</span></div>';
+  const fg=document.createElement('div');fg.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center';
+  const vlbl=document.createElement('span');vlbl.style.cssText='font-size:13px;font-weight:700';vlbl.textContent='¿Tiene video?';
+  const vSi=optBtn('Sí',cc.video===true,()=>{cc.video=true;renderCc();});
+  const vNo=optBtn('No',cc.video===false,()=>{cc.video=false;renderCc();});
+  vSi.style.flex='0 0 auto';vNo.style.flex='0 0 auto';
+  fg.appendChild(vlbl);fg.appendChild(vSi);fg.appendChild(vNo);
+  foot.appendChild(fg);
+  const cg=document.createElement('div');cg.style.cssText='margin-top:10px;font-size:13px';
+  cg.innerHTML='<span style="font-weight:700">Controló:</span> ';
+  const cbtn=document.createElement('button');cbtn.className='tile sel';cbtn.style.cssText='display:inline-block;width:auto;padding:6px 12px;margin-left:6px';cbtn.textContent=cc.controlPor||cc.who;
+  cbtn.onclick=()=>{const nom=prompt('¿Quién hizo el control físico?',cc.controlPor||cc.who);if(nom&&nom.trim()){cc.controlPor=nom.trim();renderCc();}};
+  cg.appendChild(cbtn);
+  foot.appendChild(cg);
+  cont.appendChild(foot);
+  $('#ccSave').disabled=!(cc.rows.length>0);
+}
+async function ccGuardar(){
+  if(!cc.rows.length)return;
+  const btn=$('#ccSave');btn.disabled=true;btn.textContent='Guardando…';
+  try{
+    const rows=cc.rows.map(r=>({
+      id:uuid(),numero:cc.numero,operario:r.operario,producto:r.prod,medida:r.med,color_bolsa:r.bolsa,
+      total_pedido:r.total,despachadas:r.desp||0,faltan:r.falt||0,sobran:r.sobr||0,
+      mal_impresas:r.mal||0,falla_fabrica:r.fab||0,observaciones:r.obs||null,
+      tiene_video:cc.video,controlado_por:cc.controlPor||cc.who,cargado_por:cc.who
+    }));
+    const res=await dbInsert('est_control',rows);
+    if(res&&res.offline){toastMsg('🟠 Guardado offline, se sincroniza al reconectar');}
+    else{toastMsg('✓ Control guardado');}
+    try{await dbInsert('auditoria',{id:uuid(),entidad:'control',entidad_id:cc.numero,accion:'registrar',detalle:{filas:rows.length},usuario:cc.who});}catch(e){}
+    scStack.length=0;scStack.push('scHome');show('scHome',false);
+  }catch(e){console.error('ccGuardar',e);btn.disabled=false;btn.textContent='Guardar control ›';toastMsg('⚠ No se pudo guardar');}
+}
+async function ccMetricas(){
+  show('scControlStats');
+  const body=$('#ccStatsBody');body.innerHTML='<div class="admuted" style="padding:16px">Cargando…</div>';
+  try{
+    const {data,error}=await db.from('est_control').select('*').order('created_at',{ascending:false});
+    if(error)throw error;
+    if(!data||!data.length){body.innerHTML='<div class="admuted" style="padding:16px">Todavía no hay controles cargados.</div>';return;}
+    const ops={};let tD=0,tM=0,tFab=0,tF=0,tS=0;
+    data.forEach(r=>{
+      const o=ops[r.operario]=ops[r.operario]||{desp:0,mal:0,fab:0,falt:0,sobr:0};
+      o.desp+=r.despachadas||0;o.mal+=r.mal_impresas||0;o.fab+=r.falla_fabrica||0;o.falt+=r.faltan||0;o.sobr+=r.sobran||0;
+      tD+=r.despachadas||0;tM+=r.mal_impresas||0;tFab+=r.falla_fabrica||0;tF+=r.faltan||0;tS+=r.sobran||0;
+    });
+    const tasa=(mal,base)=>base>0?(mal/base*100).toFixed(1)+'%':'—';
+    let html=`<div class="bcard"><div class="bch"><span><b>Totales</b></span><span>${data.length} controles</span></div>
+      <div style="padding:8px 2px;font-size:14px;line-height:1.8">
+      Despachadas: <b>${tD.toLocaleString('es-AR')}</b><br>
+      Mal impresas (operario): <b>${tM.toLocaleString('es-AR')}</b> · tasa ${tasa(tM,tD+tM+tFab)}<br>
+      Falla de fábrica (proveedor): <b>${tFab.toLocaleString('es-AR')}</b> · tasa ${tasa(tFab,tD+tM+tFab)}<br>
+      Faltantes: <b>${tF.toLocaleString('es-AR')}</b> · Sobrantes: <b>${tS.toLocaleString('es-AR')}</b></div></div>`;
+    html+='<h2 style="margin-top:16px">Por operario</h2>';
+    Object.entries(ops).sort((a,b)=>b[1].mal-a[1].mal).forEach(([op,o])=>{
+      const base=o.desp+o.mal+o.fab;
+      html+=`<div class="bcard" style="margin-top:8px"><div class="bch"><span><b>${op}</b></span><span>mal impresas ${tasa(o.mal,base)}</span></div>
+        <div style="padding:6px 2px;font-size:13px;line-height:1.7">Despachadas ${o.desp.toLocaleString('es-AR')} · Mal impresas <b>${o.mal.toLocaleString('es-AR')}</b> · Falla fábrica ${o.fab.toLocaleString('es-AR')} · Faltan ${o.falt.toLocaleString('es-AR')} · Sobran ${o.sobr.toLocaleString('es-AR')}</div></div>`;
+    });
+    body.innerHTML=html;
+  }catch(e){console.error('ccMetricas',e);body.innerHTML='<div class="admuted" style="padding:16px">Error al cargar métricas. ¿Creaste la tabla est_control en Supabase?</div>';}
+}
+$('#controlBtn').onclick=abrirControl;
+$('#ccPedBtn').onclick=()=>openPad('N° de pedido','',n=>{if(n>0)ccCargarPedido(n);});
+$('#ccChgWho').onclick=()=>{cc.who=null;$('#ccWhoName').textContent='—';$('#ccSecWho').style.display='block';$('#ccBody').style.display='none';$('#ccActions').style.display='none';};
+$('#ccSave').onclick=ccGuardar;
+$('#ccStatsBtn').onclick=ccMetricas;
+
+/* ── Precios por medida (costo blanco + venta), con excepción por color ── */
+let precios={},precOpen={};
+function pkey(f,m,c){return f+'|'+m+'|'+(c||'');}
+async function abrirPrecios(){
+  if(!dbStock){toastMsg('⚠ Sin conexión al stock');return;}
+  show('scPrecios');
+  const body=$('#precBody');body.innerHTML='<div class="admuted" style="padding:16px">Cargando…</div>';
+  precios={};
+  try{
+    const {data,error}=await dbStock.from('bolsas_precios').select('*');
+    if(error)throw error;
+    (data||[]).forEach(r=>{precios[pkey(r.familia,r.medida,r.color)]={costo:r.costo,venta:r.venta};});
+    renderPrecios();
+  }catch(e){console.error('precios',e);body.innerHTML='<div class="admuted" style="padding:16px">Error al cargar. ¿Creaste la tabla bolsas_precios en Supabase?</div>';}
+}
+function precChip(f,m,c,campo,label){
+  const k=pkey(f,m,c);const rec=precios[k]||{};const v=rec[campo];
+  const set=(v!=null&&v!=='');
+  const b=document.createElement('button');
+  b.className='tile'+(set?' sel':'');
+  b.style.cssText='padding:8px 6px;font-size:12px';
+  b.innerHTML=`<span style="display:block;font-size:10px;color:var(--gray);font-weight:700">${label}</span><b style="font-size:15px">${set?('$'+Number(v).toLocaleString('es-AR')):'—'}</b>`;
+  b.onclick=()=>{
+    const cur=(v!=null?v:'');
+    const t=prompt(label+' (por unidad, $):',String(cur));
+    if(t===null)return;
+    let num=null;
+    if(t.trim()!==''){num=parseFloat(t.replace(',','.'));if(isNaN(num)||num<0){toastMsg('Número inválido');return;}}
+    precios[k]=precios[k]||{};precios[k][campo]=num;
+    guardarPrecio(f,m,c);renderPrecios();
+  };
+  return b;
+}
+async function guardarPrecio(f,m,c){
+  const rec=precios[pkey(f,m,c)]||{};
+  try{
+    const {error}=await dbStock.from('bolsas_precios').upsert({familia:f,medida:m,color:c||'',costo:(rec.costo??null),venta:(rec.venta??null)},{onConflict:'familia,medida,color'});
+    if(error)throw error;toastMsg('✓ Guardado');
+  }catch(e){console.error('guardarPrecio',e);toastMsg('⚠ No se pudo guardar');}
+}
+function renderPrecios(){
+  const body=$('#precBody');body.innerHTML='';
+  PRODUCTOS.forEach(fam=>{
+    const h=document.createElement('h2');h.textContent=fam.name;h.style.marginTop='16px';body.appendChild(h);
+    (fam.med||[]).forEach(med=>{
+      const card=document.createElement('div');card.className='bcard';card.style.marginTop='8px';
+      const hd=document.createElement('div');hd.className='bch';hd.innerHTML=`<span><b>${med}</b></span>`;card.appendChild(hd);
+      const g=document.createElement('div');g.className='grid c2';g.style.marginTop='8px';
+      g.appendChild(precChip(fam.id,med,'','costo','Costo blanco'));
+      g.appendChild(precChip(fam.id,med,'','venta','Venta'));
+      card.appendChild(g);
+      let colores=BOLSA[fam.id]||[];
+      if(fam.id==='fris'&&FRIS[med])colores=colores.filter(([n])=>FRIS[med].c.includes(n));
+      const ek=fam.id+'|'+med;
+      const hayExc=colores.some(([n])=>precios[pkey(fam.id,med,n)]);
+      const toggle=document.createElement('button');toggle.className='accb copy';toggle.style.cssText='margin-top:8px;font-size:12px';
+      toggle.textContent=(precOpen[ek]?'▾':'▸')+' Precio por color'+(hayExc?' •':'');
+      toggle.onclick=()=>{precOpen[ek]=!precOpen[ek];renderPrecios();};
+      card.appendChild(toggle);
+      if(precOpen[ek]){
+        colores.forEach(([n])=>{
+          const sub=document.createElement('div');sub.style.cssText='margin-top:8px;padding-top:8px;border-top:1px solid #eee';
+          const lbl=document.createElement('div');lbl.style.cssText='font-size:12px;font-weight:700;margin-bottom:4px';lbl.textContent=n+' (deja vacío = usa el base)';sub.appendChild(lbl);
+          const sg=document.createElement('div');sg.className='grid c2';
+          sg.appendChild(precChip(fam.id,med,n,'costo','Costo '+n));
+          sg.appendChild(precChip(fam.id,med,n,'venta','Venta '+n));
+          sub.appendChild(sg);card.appendChild(sub);
+        });
+      }
+      body.appendChild(card);
+    });
+  });
+}
+$('#preciosBtn').onclick=abrirPrecios;
 function impCargaRaw(c){const li=(c.est_lineas||[]).reduce((a,l)=>a+((l.cantidad)||0)*((l.caras)||1)*((l.colores)||1),0);return (c.impresiones&&c.impresiones>0)?c.impresiones:li;}
 function calcularImpresionesPedido(ped){const L=(ped&&(ped.lineas||ped.est_lineas))||[];return L.reduce((t,l)=>t+(((l.qty??l.cantidad)||0)*((l.caras)||1)*((l.colores)||1)),0);}
 function impresionesDe(p){if(p.impresiones&&p.impresiones>0)return p.impresiones;const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(((l.cantidad??l.qty)||0)*((l.caras)||1)*((l.colores)||1)),0);}
