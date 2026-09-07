@@ -2631,6 +2631,7 @@ const GA_CATS=['Servicios','Insumos','Personal','Limpieza','Marketing','Transpor
 const GA_FREQ={semanal:4.33,mensual:1,bimestral:1/2,trimestral:1/3,semestral:1/6,anual:1/12};
 let gastos=[],gaBase=null;
 function gaMensual(g){return Number(g.monto||0)*(GA_FREQ[g.frecuencia]||1);}
+let gaCalc=null;
 async function abrirGastos(){
   if(!dbStock){toastMsg('⚠ Sin conexión');return;}
   show('scGastos');
@@ -2643,19 +2644,25 @@ async function abrirGastos(){
     if(g.error)throw g.error;
     gastos=g.data||[];
     (k.data||[]).forEach(r=>{cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
-    gaBase=cfg.bolsas_mes||null;
-    if(!gaBase)await gaCalcBase();
+    await gaComputePeriodo();
+    gaBase=cfg.bolsas_mes||(gaCalc?gaCalc.bolsasMes:null)||null;
     renderGastos();
   }catch(e){console.error('gastos',e);$('#gaLista').innerHTML='<div class="admuted" style="padding:16px">Error al cargar. ¿Creaste la tabla bolsas_gastos?</div>';}
 }
-async function gaCalcBase(){
+async function gaComputePeriodo(){
   try{
-    const fin=new Date(),ini=new Date();ini.setDate(fin.getDate()-90);
+    const dias=90,fin=new Date(),ini=new Date();ini.setDate(fin.getDate()-dias);
+    const toYMD=d=>d.toISOString().slice(0,10);
     const peds=await fetchPedidosRango(ini.toISOString(),fin.toISOString());
     const a=analizarPedidos(peds);
-    const meses=3;const prom=Math.round((a.bolsas||0)/meses);
-    if(prom>0){gaBase=prom;cfg.bolsas_mes=prom;await dbStock.from('bolsas_config').upsert({clave:'bolsas_mes',valor:prom},{onConflict:'clave'});}
-  }catch(e){console.error('gaCalcBase',e);}
+    const bolsas90=a.bolsas||0,bolsasMes=Math.round(bolsas90/(dias/30));
+    let totalLiq=0,minTot=0;
+    try{
+      const h=await HorasService.modelo(toYMD(ini),toYMD(fin),'__all__','');
+      (h.empleados||[]).forEach(e=>{if(esNoLiquidable(e.empleado))return;const n=e.totNormal||0,x=e.totExtra||0,s=e.totSabado||0;minTot+=n+x+s;totalLiq+=n/60*CONFIG_LIQ.hora_normal+x/60*CONFIG_LIQ.hora_extra+s/60*CONFIG_LIQ.hora_extra;});
+    }catch(e){console.error('mano obra',e);}
+    gaCalc={dias,bolsas90,bolsasMes,totalLiq,minTot,manoBolsa:bolsas90>0?totalLiq/bolsas90:null};
+  }catch(e){console.error('gaComputePeriodo',e);gaCalc=null;}
 }
 function renderGastos(){
   const money=x=>'$'+Math.round(x).toLocaleString('es-AR');
@@ -2673,9 +2680,17 @@ function renderGastos(){
     res+='</div>';
   }
   res+=`</div></div>`;
-  if(porBolsa!=null)res+=`<button class="accb copy" id="gaAplicar" style="margin-top:8px;font-size:12px">↧ Usar ${money(porBolsa)}/bolsa en el cotizador</button>`;
+  if(gaCalc){
+    const mb=gaCalc.manoBolsa;
+    res+=`<div class="bcard" style="margin-top:8px"><div class="bch"><span><b>Mano de obra (del sistema)</b></span><span>últimos ${gaCalc.dias} días</span></div>
+      <div style="padding:8px 2px;font-size:13px;line-height:1.7">Pagado aprox: <b>${money(gaCalc.totalLiq)}</b> · Horas: ${Math.round(gaCalc.minTot/60).toLocaleString('es-AR')} · Bolsas: ${gaCalc.bolsas90.toLocaleString('es-AR')}
+      <div style="font-size:16px;color:#0e7a4f;margin-top:4px">Mano de obra por bolsa: <b>${mb!=null?money(mb):'—'}</b></div></div></div>`;
+    if(mb!=null)res+=`<button class="accb copy" id="gaAplicarMO" style="margin-top:8px;font-size:12px">↧ Usar ${money(mb)}/bolsa de mano de obra</button>`;
+  }
+  if(porBolsa!=null)res+=`<button class="accb copy" id="gaAplicar" style="margin-top:8px;font-size:12px">↧ Usar ${money(porBolsa)}/bolsa de gastos generales</button>`;
   $('#gaResumen').innerHTML=res;
   const ap=$('#gaAplicar');if(ap)ap.onclick=async()=>{cfg.gastos_grales_bolsa=Math.round(porBolsa*100)/100;await guardarCfg('gastos_grales_bolsa',cfg.gastos_grales_bolsa);toastMsg('✓ Aplicado al cotizador');};
+  const apMO=$('#gaAplicarMO');if(apMO)apMO.onclick=async()=>{cfg.mano_obra_bolsa=Math.round(gaCalc.manoBolsa*100)/100;await guardarCfg('mano_obra_bolsa',cfg.mano_obra_bolsa);toastMsg('✓ Mano de obra aplicada');};
   const cont=$('#gaLista');cont.innerHTML='';
   if(!gastos.length){cont.innerHTML='<div class="admuted" style="padding:16px">Todavía no cargaste gastos. Tocá "＋ Agregar gasto".</div>';return;}
   const byCat={};gastos.forEach(g=>{(byCat[g.categoria||'Otros']=byCat[g.categoria||'Otros']||[]).push(g);});
@@ -2734,7 +2749,7 @@ $('#gaAdd').onclick=()=>gaForm(null);
 $('#gaBaseBtn').onclick=()=>{
   const t=prompt('Bolsas por mes para prorratear (dejá vacío para recalcular del sistema):',gaBase||'');
   if(t===null)return;
-  if(t.trim()===''){gaBase=null;cfg.bolsas_mes=null;gaCalcBase().then(renderGastos);return;}
+  if(t.trim()===''){gaBase=null;cfg.bolsas_mes=null;gaComputePeriodo().then(()=>{gaBase=gaCalc?gaCalc.bolsasMes:null;renderGastos();});return;}
   const n=parseInt(t.replace(/\D/g,''),10);
   if(!n||n<=0){toastMsg('Número inválido');return;}
   gaBase=n;cfg.bolsas_mes=n;dbStock.from('bolsas_config').upsert({clave:'bolsas_mes',valor:n},{onConflict:'clave'});renderGastos();
