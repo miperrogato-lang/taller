@@ -498,6 +498,7 @@
       <button class="histbtn" id="avBtn">Centro de avisos 📢 ›</button>
       <button class="histbtn" id="preciosBtn">Precios 💲 ›</button>
       <button class="histbtn" id="cotizBtn">Cotizar / rentabilidad 💰 ›</button>
+      <button class="histbtn" id="gastosBtn">Estructura de gastos 🧾 ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
@@ -834,6 +835,17 @@
         <div class="sect" id="coSecCol" style="display:none"><h2 class="step" data-n="4">Colores de impresión</h2><div class="grid c2" id="coCol"></div></div>
       </div>
       <div id="coResult"></div>
+    </div>
+
+    <!-- ESTRUCTURA DE GASTOS -->
+    <div class="screen" id="scGastos">
+      <h2>🧾 Estructura de gastos</h2>
+      <div id="gaResumen"></div>
+      <div style="display:flex;gap:8px;margin:10px 0">
+        <button class="btn add" id="gaAdd" style="flex:1">＋ Agregar gasto</button>
+        <button class="accb copy" id="gaBaseBtn">⚙ Base de prorrateo</button>
+      </div>
+      <div id="gaLista"><div class="admuted" style="padding:16px">Cargando…</div></div>
     </div>
   </div>
 </div>
@@ -2613,6 +2625,121 @@ $('#coModePed').onclick=()=>setCoMode('ped');
 $('#coModeSuelto').onclick=()=>setCoMode('suelto');
 $('#coPedBtn').onclick=()=>openPad('N° de pedido','',n=>{if(n>0)coCargarPedidoRent(n);});
 $('#cotizBtn').onclick=abrirCotiz;
+
+/* ── Estructura de gastos (fijos/variables, frecuencia → mensual, prorrateo por bolsa) ── */
+const GA_CATS=['Servicios','Insumos','Personal','Limpieza','Marketing','Transporte','Impuestos','Software','Otros'];
+const GA_FREQ={semanal:4.33,mensual:1,bimestral:1/2,trimestral:1/3,semestral:1/6,anual:1/12};
+let gastos=[],gaBase=null;
+function gaMensual(g){return Number(g.monto||0)*(GA_FREQ[g.frecuencia]||1);}
+async function abrirGastos(){
+  if(!dbStock){toastMsg('⚠ Sin conexión');return;}
+  show('scGastos');
+  $('#gaLista').innerHTML='<div class="admuted" style="padding:16px">Cargando…</div>';
+  try{
+    const [g,k]=await Promise.all([
+      dbStock.from('bolsas_gastos').select('*').order('categoria',{ascending:true}),
+      dbStock.from('bolsas_config').select('*')
+    ]);
+    if(g.error)throw g.error;
+    gastos=g.data||[];
+    (k.data||[]).forEach(r=>{cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
+    gaBase=cfg.bolsas_mes||null;
+    if(!gaBase)await gaCalcBase();
+    renderGastos();
+  }catch(e){console.error('gastos',e);$('#gaLista').innerHTML='<div class="admuted" style="padding:16px">Error al cargar. ¿Creaste la tabla bolsas_gastos?</div>';}
+}
+async function gaCalcBase(){
+  try{
+    const fin=new Date(),ini=new Date();ini.setDate(fin.getDate()-90);
+    const peds=await fetchPedidosRango(ini.toISOString(),fin.toISOString());
+    const a=analizarPedidos(peds);
+    const meses=3;const prom=Math.round((a.bolsas||0)/meses);
+    if(prom>0){gaBase=prom;cfg.bolsas_mes=prom;await dbStock.from('bolsas_config').upsert({clave:'bolsas_mes',valor:prom},{onConflict:'clave'});}
+  }catch(e){console.error('gaCalcBase',e);}
+}
+function renderGastos(){
+  const money=x=>'$'+Math.round(x).toLocaleString('es-AR');
+  const totMes=gastos.reduce((s,g)=>s+gaMensual(g),0);
+  const porBolsa=(gaBase&&gaBase>0)?totMes/gaBase:null;
+  const porCat={};gastos.forEach(g=>{porCat[g.categoria||'Otros']=(porCat[g.categoria||'Otros']||0)+gaMensual(g);});
+  let res=`<div class="bcard"><div class="bch"><span><b>Resumen mensual</b></span><span>${gastos.length} gastos</span></div>
+    <div style="padding:10px 2px;font-size:14px;line-height:1.8">
+      <div style="font-size:20px">Total mensual: <b>${money(totMes)}</b></div>
+      <div style="margin-top:4px">Base de prorrateo: <b>${gaBase?gaBase.toLocaleString('es-AR'):'—'}</b> bolsas/mes</div>
+      <div style="font-size:18px;color:#0e7a4f;margin-top:4px">Gasto por bolsa: <b>${porBolsa!=null?money(porBolsa):'—'}</b></div>`;
+  if(Object.keys(porCat).length){
+    res+='<div style="margin-top:10px;border-top:1px solid #eee;padding-top:8px;font-size:13px">';
+    Object.entries(porCat).sort((a,b)=>b[1]-a[1]).forEach(([c,v])=>{const pct=totMes>0?(v/totMes*100).toFixed(0):0;res+=`${c}: <b>${money(v)}</b> <span class="admuted">(${pct}%)</span><br>`;});
+    res+='</div>';
+  }
+  res+=`</div></div>`;
+  if(porBolsa!=null)res+=`<button class="accb copy" id="gaAplicar" style="margin-top:8px;font-size:12px">↧ Usar ${money(porBolsa)}/bolsa en el cotizador</button>`;
+  $('#gaResumen').innerHTML=res;
+  const ap=$('#gaAplicar');if(ap)ap.onclick=async()=>{cfg.gastos_grales_bolsa=Math.round(porBolsa*100)/100;await guardarCfg('gastos_grales_bolsa',cfg.gastos_grales_bolsa);toastMsg('✓ Aplicado al cotizador');};
+  const cont=$('#gaLista');cont.innerHTML='';
+  if(!gastos.length){cont.innerHTML='<div class="admuted" style="padding:16px">Todavía no cargaste gastos. Tocá "＋ Agregar gasto".</div>';return;}
+  const byCat={};gastos.forEach(g=>{(byCat[g.categoria||'Otros']=byCat[g.categoria||'Otros']||[]).push(g);});
+  Object.keys(byCat).sort().forEach(cat=>{
+    const h=document.createElement('h2');h.textContent=cat;h.style.marginTop='14px';cont.appendChild(h);
+    byCat[cat].forEach(g=>{
+      const card=document.createElement('div');card.className='bcard';card.style.marginTop='6px';
+      card.innerHTML=`<div class="bch"><span><b>${g.nombre}</b></span><span>${money(gaMensual(g))}/mes</span></div>
+        <div style="padding:4px 2px;font-size:12px" class="admuted">${money(g.monto)} · ${g.frecuencia}${g.nota?(' · '+g.nota):''}</div>`;
+      const acts=document.createElement('div');acts.style.cssText='display:flex;gap:6px;margin-top:6px';
+      const ed=document.createElement('button');ed.className='accb copy';ed.style.fontSize='12px';ed.textContent='✎ Editar';ed.onclick=()=>gaForm(g);
+      const de=document.createElement('button');de.className='accb copy';de.style.cssText='font-size:12px;color:#b91c1c';de.textContent='🗑 Borrar';de.onclick=()=>gaBorrar(g);
+      acts.appendChild(ed);acts.appendChild(de);card.appendChild(acts);
+      cont.appendChild(card);
+    });
+  });
+}
+function gaForm(g){
+  const edit=!!g;const cur=g||{nombre:'',categoria:'Otros',monto:'',frecuencia:'mensual',nota:''};
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
+  const opts=GA_CATS.map(c=>`<option value="${c}"${c===cur.categoria?' selected':''}>${c}</option>`).join('');
+  const fopts=Object.keys(GA_FREQ).map(f=>`<option value="${f}"${f===cur.frecuencia?' selected':''}>${f}</option>`).join('');
+  const inp='width:100%;padding:11px;border:2px solid #ddd;border-radius:9px;font-size:15px;font-family:inherit;margin-top:4px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:14px;padding:20px;max-width:440px;width:100%">
+    <div style="font-weight:800;font-size:17px;margin-bottom:12px">${edit?'Editar gasto':'Nuevo gasto'}</div>
+    <label style="font-size:12px;font-weight:700">Nombre</label><input id="gfNom" style="${inp}" value="${cur.nombre||''}" placeholder="Luz, Agua, Publicidad…">
+    <label style="font-size:12px;font-weight:700;display:block;margin-top:10px">Categoría</label><select id="gfCat" style="${inp}">${opts}</select>
+    <label style="font-size:12px;font-weight:700;display:block;margin-top:10px">Monto ($)</label><input id="gfMonto" type="number" inputmode="decimal" style="${inp}" value="${cur.monto||''}">
+    <label style="font-size:12px;font-weight:700;display:block;margin-top:10px">Frecuencia</label><select id="gfFreq" style="${inp}">${fopts}</select>
+    <label style="font-size:12px;font-weight:700;display:block;margin-top:10px">Nota (opcional)</label><input id="gfNota" style="${inp}" value="${cur.nota||''}">
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button id="gfCancel" style="flex:1;padding:12px;border:2px solid #ddd;border-radius:10px;background:#fff;font-weight:700">Cancelar</button>
+      <button id="gfOk" style="flex:1;padding:12px;border:0;border-radius:10px;background:#17202a;color:#fff;font-weight:800">Guardar</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#gfCancel').onclick=()=>ov.remove();
+  ov.querySelector('#gfOk').onclick=async()=>{
+    const nombre=ov.querySelector('#gfNom').value.trim();
+    const monto=parseFloat(String(ov.querySelector('#gfMonto').value).replace(',','.'));
+    if(!nombre||isNaN(monto)||monto<0){toastMsg('Completá nombre y monto');return;}
+    const row={nombre,categoria:ov.querySelector('#gfCat').value,monto,frecuencia:ov.querySelector('#gfFreq').value,nota:ov.querySelector('#gfNota').value.trim()||null};
+    try{
+      if(edit){const {error}=await dbStock.from('bolsas_gastos').update(row).eq('id',g.id);if(error)throw error;Object.assign(g,row);}
+      else{const {data,error}=await dbStock.from('bolsas_gastos').insert(row).select();if(error)throw error;gastos.push((data&&data[0])||row);}
+      ov.remove();renderGastos();toastMsg('✓ Guardado');
+    }catch(e){console.error('gaGuardar',e);toastMsg('⚠ No se pudo guardar');}
+  };
+}
+async function gaBorrar(g){
+  if(!confirm('¿Borrar "'+g.nombre+'"?'))return;
+  try{const {error}=await dbStock.from('bolsas_gastos').delete().eq('id',g.id);if(error)throw error;gastos=gastos.filter(x=>x.id!==g.id);renderGastos();toastMsg('✓ Borrado');}
+  catch(e){console.error('gaBorrar',e);toastMsg('⚠ No se pudo borrar');}
+}
+$('#gaAdd').onclick=()=>gaForm(null);
+$('#gaBaseBtn').onclick=()=>{
+  const t=prompt('Bolsas por mes para prorratear (dejá vacío para recalcular del sistema):',gaBase||'');
+  if(t===null)return;
+  if(t.trim()===''){gaBase=null;cfg.bolsas_mes=null;gaCalcBase().then(renderGastos);return;}
+  const n=parseInt(t.replace(/\D/g,''),10);
+  if(!n||n<=0){toastMsg('Número inválido');return;}
+  gaBase=n;cfg.bolsas_mes=n;dbStock.from('bolsas_config').upsert({clave:'bolsas_mes',valor:n},{onConflict:'clave'});renderGastos();
+};
+$('#gastosBtn').onclick=abrirGastos;
 function impCargaRaw(c){const li=(c.est_lineas||[]).reduce((a,l)=>a+((l.cantidad)||0)*((l.caras)||1)*((l.colores)||1),0);return (c.impresiones&&c.impresiones>0)?c.impresiones:li;}
 function calcularImpresionesPedido(ped){const L=(ped&&(ped.lineas||ped.est_lineas))||[];return L.reduce((t,l)=>t+(((l.qty??l.cantidad)||0)*((l.caras)||1)*((l.colores)||1)),0);}
 function impresionesDe(p){if(p.impresiones&&p.impresiones>0)return p.impresiones;const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(((l.cantidad??l.qty)||0)*((l.caras)||1)*((l.colores)||1)),0);}
