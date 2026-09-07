@@ -820,10 +820,13 @@
     <!-- COTIZADOR / RENTABILIDAD -->
     <div class="screen" id="scCotiz">
       <h2>💰 Cotizar / rentabilidad</h2>
-      <div class="admuted" style="padding:2px 2px 10px">Elegí producto, medida y cantidad. Toma el precio del tramo alcanzado (200 / 500 / 1000; laminada desde 100).</div>
+      <div class="admuted" style="padding:2px 2px 8px">Elegí producto, medida, cantidad y colores. Resta bolsa + tinta + mano de obra + gastos generales.</div>
+      <button class="accb copy" id="coCfgToggle" style="font-size:12px;margin-bottom:6px">⚙ Costos generales</button>
+      <div id="coCfgPanel" style="display:none"></div>
       <div class="sect"><h2 class="step" data-n="1">Producto</h2><div class="grid c2" id="coProd"></div></div>
       <div class="sect" id="coSecMed" style="display:none"><h2 class="step" data-n="2">Medida</h2><div class="grid c3" id="coMed"></div></div>
       <div class="sect" id="coSecQty" style="display:none"><h2 class="step" data-n="3">Cantidad</h2><div class="grid c3" id="coQty"></div></div>
+      <div class="sect" id="coSecCol" style="display:none"><h2 class="step" data-n="4">Colores de impresión</h2><div class="grid c2" id="coCol"></div></div>
       <div id="coResult"></div>
     </div>
   </div>
@@ -2454,23 +2457,47 @@ function renderPrecios(){
 }
 $('#preciosBtn').onclick=abrirPrecios;
 
-/* ── Cotizador / rentabilidad (venta por tramo + costo) ── */
-let co={prod:null,med:null,qty:null},ventaMap={},costoMap={};
+/* ── Cotizador / rentabilidad (venta por tramo − bolsa − tinta − mano de obra − gastos) ── */
+let co={prod:null,med:null,qty:null,colores:1},ventaMap={},costoMap={},cfg={tinta_1color:null,mano_obra_bolsa:null,gastos_grales_bolsa:null};
 async function abrirCotiz(){
   if(!dbStock){toastMsg('⚠ Sin conexión al stock');return;}
-  co={prod:null,med:null,qty:null};ventaMap={};costoMap={};
+  co={prod:null,med:null,qty:null,colores:1};ventaMap={};costoMap={};
   show('scCotiz');
+  $('#coCfgPanel').style.display='none';
   $('#coResult').innerHTML='<div class="admuted" style="padding:12px">Cargando precios…</div>';
   try{
-    const [v,c]=await Promise.all([
+    const [v,c,k]=await Promise.all([
       dbStock.from('bolsas_venta').select('*'),
-      dbStock.from('bolsas_precios').select('*')
+      dbStock.from('bolsas_precios').select('*'),
+      dbStock.from('bolsas_config').select('*')
     ]);
-    (v.data||[]).forEach(r=>{const k=r.familia+'|'+r.medida;(ventaMap[k]=ventaMap[k]||[]).push({desde:r.desde,total:Number(r.precio_total)});});
+    (v.data||[]).forEach(r=>{const key=r.familia+'|'+r.medida;(ventaMap[key]=ventaMap[key]||[]).push({desde:r.desde,total:Number(r.precio_total)});});
     Object.values(ventaMap).forEach(a=>a.sort((x,y)=>x.desde-y.desde));
     (c.data||[]).forEach(r=>{costoMap[r.familia+'|'+r.medida+'|'+(r.color||'')]={costo:r.costo,venta:r.venta};});
-    $('#coResult').innerHTML='';renderCotiz();
-  }catch(e){console.error('cotiz',e);$('#coResult').innerHTML='<div class="admuted" style="padding:12px">Error al cargar precios. ¿Creaste las tablas bolsas_venta y bolsas_precios?</div>';}
+    (k.data||[]).forEach(r=>{cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
+    $('#coResult').innerHTML='';renderCotiz();renderCfg();
+  }catch(e){console.error('cotiz',e);$('#coResult').innerHTML='<div class="admuted" style="padding:12px">Error al cargar. ¿Creaste las tablas bolsas_venta, bolsas_precios y bolsas_config?</div>';}
+}
+function cfgChip(clave,label){
+  const v=cfg[clave];const set=(v!=null);
+  const b=document.createElement('button');b.className='tile'+(set?' sel':'');b.style.cssText='padding:8px 6px;font-size:12px';
+  b.innerHTML=`<span style="display:block;font-size:10px;color:var(--gray);font-weight:700">${label}</span><b style="font-size:15px">${set?('$'+Number(v).toLocaleString('es-AR')):'—'}</b>`;
+  b.onclick=()=>{const t=prompt(label+' (por bolsa, $):',v!=null?v:'');if(t===null)return;let num=null;if(t.trim()!==''){num=parseFloat(t.replace(',','.'));if(isNaN(num)||num<0){toastMsg('Número inválido');return;}}cfg[clave]=num;guardarCfg(clave,num);renderCfg();if(co.qty)calcCotiz();};
+  return b;
+}
+function renderCfg(){
+  const p=$('#coCfgPanel');p.innerHTML='';
+  const card=document.createElement('div');card.className='bcard';
+  card.innerHTML='<div class="bch"><span>Costos por bolsa (aprox)</span></div>';
+  const g=document.createElement('div');g.className='grid c3';g.style.marginTop='8px';
+  g.appendChild(cfgChip('tinta_1color','Tinta 1 color'));
+  g.appendChild(cfgChip('mano_obra_bolsa','Mano de obra'));
+  g.appendChild(cfgChip('gastos_grales_bolsa','Gastos grales'));
+  card.appendChild(g);p.appendChild(card);
+}
+async function guardarCfg(clave,valor){
+  try{const {error}=await dbStock.from('bolsas_config').upsert({clave,valor},{onConflict:'clave'});if(error)throw error;toastMsg('✓ Guardado');}
+  catch(e){console.error('guardarCfg',e);toastMsg('⚠ No se pudo guardar');}
 }
 function renderCotiz(){
   const gp=$('#coProd');gp.innerHTML='';
@@ -2480,35 +2507,47 @@ function renderCotiz(){
   if(P){const g=$('#coMed');g.innerHTML='';P.med.forEach(m=>g.appendChild(optBtn(m,co.med===m,()=>{co.med=m;co.qty=null;$('#coResult').innerHTML='';renderCotiz();})));}
   const ready=co.prod&&co.med;
   $('#coSecQty').style.display=ready?'block':'none';
-  if(ready){const gq=$('#coQty');gq.innerHTML='';[200,500,1000].forEach(q=>gq.appendChild(optBtn(q.toLocaleString('es-AR'),co.qty===q,()=>{co.qty=q;calcCotiz();renderCotiz();})));gq.appendChild(optBtn(co.qty&&![200,500,1000].includes(co.qty)?('Otra: '+co.qty):'Otra…',co.qty&&![200,500,1000].includes(co.qty),()=>openPad('Cantidad',co.qty||'',n=>{if(n>0){co.qty=n;calcCotiz();renderCotiz();}}),null,'otros'));}
+  if(ready){const gq=$('#coQty');gq.innerHTML='';[200,500,1000].forEach(q=>gq.appendChild(optBtn(q.toLocaleString('es-AR'),co.qty===q,()=>{co.qty=q;renderCotiz();calcCotiz();})));gq.appendChild(optBtn(co.qty&&![200,500,1000].includes(co.qty)?('Otra: '+co.qty):'Otra…',co.qty&&![200,500,1000].includes(co.qty),()=>openPad('Cantidad',co.qty||'',n=>{if(n>0){co.qty=n;renderCotiz();calcCotiz();}}),null,'otros'));}
+  $('#coSecCol').style.display=(ready&&co.qty)?'block':'none';
+  if(ready&&co.qty){const gc=$('#coCol');gc.innerHTML='';gc.appendChild(optBtn('1 color',co.colores===1,()=>{co.colores=1;renderCotiz();calcCotiz();}));gc.appendChild(optBtn('2 colores',co.colores===2,()=>{co.colores=2;renderCotiz();calcCotiz();}));}
 }
 function calcCotiz(){
   const tiers=ventaMap[co.prod+'|'+co.med];
   const cont=$('#coResult');
   if(!tiers||!tiers.length){cont.innerHTML='<div class="bcard" style="margin-top:12px"><div style="padding:12px;font-size:14px">Esta medida no tiene precio de venta cargado.</div></div>';return;}
-  // tramo alcanzado: el mayor "desde" <= qty; si es menor al mínimo, usa el mínimo
-  let tier=tiers[0];
-  tiers.forEach(t=>{if(co.qty>=t.desde)tier=t;});
+  let tier=tiers[0];tiers.forEach(t=>{if(co.qty>=t.desde)tier=t;});
   const unit=tier.total/tier.desde;
   const ventaTot=unit*co.qty;
   const rec=costoMap[co.prod+'|'+co.med+'|']||{};
-  const costoU=(rec.costo!=null&&rec.costo!=='')?Number(rec.costo):null;
   const money=n=>'$'+Math.round(n).toLocaleString('es-AR');
-  let html=`<div class="bcard" style="margin-top:12px"><div class="bch"><span><b>${(PRODUCTOS.find(p=>p.id===co.prod)||{}).name} ${co.med}</b></span><span>${co.qty.toLocaleString('es-AR')} u · tramo ${tier.desde}</span></div>
-    <div style="padding:10px 2px;font-size:15px;line-height:1.9">
-      Venta unitaria: <b>${money(unit)}</b><br>
-      <span style="font-size:18px">Venta total: <b>${money(ventaTot)}</b></span>`;
-  if(costoU!=null){
-    const costoTot=costoU*co.qty;const rent=ventaTot-costoTot;const margen=ventaTot>0?(rent/ventaTot*100):0;
-    const col=rent>=0?'#0e7a4f':'#b91c1c';
-    html+=`<br>Costo unitario: ${money(costoU)} · Costo total: <b>${money(costoTot)}</b>
-      <br><span style="font-size:18px;color:${col}">Rentabilidad: <b>${money(rent)}</b> (${margen.toFixed(1)}%)</span>`;
-  }else{
-    html+=`<br><span class="admuted" style="font-size:13px">Cargá el costo de esta medida en 💲 Precios para ver la rentabilidad.</span>`;
-  }
+  const q=co.qty;
+  const costoU=(rec.costo!=null&&rec.costo!=='')?Number(rec.costo):null;
+  const tintaU=(cfg.tinta_1color!=null)?cfg.tinta_1color*co.colores:null;
+  const manoU=(cfg.mano_obra_bolsa!=null)?cfg.mano_obra_bolsa:null;
+  const gastU=(cfg.gastos_grales_bolsa!=null)?cfg.gastos_grales_bolsa:null;
+  const costoT=costoU!=null?costoU*q:0, tintaT=tintaU!=null?tintaU*q:0, manoT=manoU!=null?manoU*q:0, gastT=gastU!=null?gastU*q:0;
+  const faltan=[];
+  if(costoU==null)faltan.push('costo de bolsa');
+  if(tintaU==null)faltan.push('tinta');
+  if(manoU==null)faltan.push('mano de obra');
+  const rent=ventaTot-costoT-tintaT-manoT-gastT;
+  const margen=ventaTot>0?(rent/ventaTot*100):0;
+  const col=rent>=0?'#0e7a4f':'#b91c1c';
+  const P=(PRODUCTOS.find(p=>p.id===co.prod)||{}).name;
+  let html=`<div class="bcard" style="margin-top:12px"><div class="bch"><span><b>${P} ${co.med}</b></span><span>${q.toLocaleString('es-AR')} u · ${co.colores}c · tramo ${tier.desde}</span></div>
+    <div style="padding:10px 2px;font-size:14px;line-height:1.85">
+      <div style="font-size:17px">Venta: <b>${money(ventaTot)}</b> <span class="admuted">(${money(unit)}/u)</span></div>
+      <div style="margin-top:6px;border-top:1px solid #eee;padding-top:6px">
+      − Bolsa: ${money(costoT)} <span class="admuted">(${costoU!=null?money(costoU):'—'}/u)</span><br>
+      − Tinta ${co.colores}c: ${money(tintaT)} <span class="admuted">(${tintaU!=null?money(tintaU):'—'}/u)</span><br>
+      − Mano de obra: ${money(manoT)} <span class="admuted">(${manoU!=null?money(manoU):'—'}/u)</span><br>
+      − Gastos grales: ${money(gastT)} <span class="admuted">(${gastU!=null?money(gastU):'—'}/u)</span></div>
+      <div style="margin-top:8px;border-top:2px solid #333;padding-top:8px;font-size:18px;color:${col}">Rentabilidad: <b>${money(rent)}</b> (${margen.toFixed(1)}%)</div>`;
+  if(faltan.length)html+=`<div class="admuted" style="font-size:12px;margin-top:6px">Falta cargar: ${faltan.join(', ')} — el resultado es parcial.</div>`;
   html+='</div></div>';
   cont.innerHTML=html;
 }
+$('#coCfgToggle').onclick=()=>{const p=$('#coCfgPanel');p.style.display=(p.style.display==='none')?'block':'none';};
 $('#cotizBtn').onclick=abrirCotiz;
 function impCargaRaw(c){const li=(c.est_lineas||[]).reduce((a,l)=>a+((l.cantidad)||0)*((l.caras)||1)*((l.colores)||1),0);return (c.impresiones&&c.impresiones>0)?c.impresiones:li;}
 function calcularImpresionesPedido(ped){const L=(ped&&(ped.lineas||ped.est_lineas))||[];return L.reduce((t,l)=>t+(((l.qty??l.cantidad)||0)*((l.caras)||1)*((l.colores)||1)),0);}
