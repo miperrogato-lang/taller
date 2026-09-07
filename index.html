@@ -820,13 +820,19 @@
     <!-- COTIZADOR / RENTABILIDAD -->
     <div class="screen" id="scCotiz">
       <h2>💰 Cotizar / rentabilidad</h2>
-      <div class="admuted" style="padding:2px 2px 8px">Elegí producto, medida, cantidad y colores. Resta bolsa + tinta + mano de obra + gastos generales.</div>
+      <div class="grid c2" style="margin-bottom:8px"><button class="tile" id="coModePed">📄 Por pedido</button><button class="tile" id="coModeSuelto">✏️ Suelto</button></div>
       <button class="accb copy" id="coCfgToggle" style="font-size:12px;margin-bottom:6px">⚙ Costos generales</button>
       <div id="coCfgPanel" style="display:none"></div>
-      <div class="sect"><h2 class="step" data-n="1">Producto</h2><div class="grid c2" id="coProd"></div></div>
-      <div class="sect" id="coSecMed" style="display:none"><h2 class="step" data-n="2">Medida</h2><div class="grid c3" id="coMed"></div></div>
-      <div class="sect" id="coSecQty" style="display:none"><h2 class="step" data-n="3">Cantidad</h2><div class="grid c3" id="coQty"></div></div>
-      <div class="sect" id="coSecCol" style="display:none"><h2 class="step" data-n="4">Colores de impresión</h2><div class="grid c2" id="coCol"></div></div>
+      <div id="coPedBox">
+        <button class="pedidoField empty" id="coPedBtn"><span class="lbl">N° de pedido</span><span class="val" id="coPedVal">Tocá para buscar</span></button>
+      </div>
+      <div id="coSueltoBox" style="display:none">
+        <div class="admuted" style="padding:2px 2px 8px">Elegí producto, medida, cantidad y colores.</div>
+        <div class="sect"><h2 class="step" data-n="1">Producto</h2><div class="grid c2" id="coProd"></div></div>
+        <div class="sect" id="coSecMed" style="display:none"><h2 class="step" data-n="2">Medida</h2><div class="grid c3" id="coMed"></div></div>
+        <div class="sect" id="coSecQty" style="display:none"><h2 class="step" data-n="3">Cantidad</h2><div class="grid c3" id="coQty"></div></div>
+        <div class="sect" id="coSecCol" style="display:none"><h2 class="step" data-n="4">Colores de impresión</h2><div class="grid c2" id="coCol"></div></div>
+      </div>
       <div id="coResult"></div>
     </div>
   </div>
@@ -2475,8 +2481,63 @@ async function abrirCotiz(){
     Object.values(ventaMap).forEach(a=>a.sort((x,y)=>x.desde-y.desde));
     (c.data||[]).forEach(r=>{costoMap[r.familia+'|'+r.medida+'|'+(r.color||'')]={costo:r.costo,venta:r.venta};});
     (k.data||[]).forEach(r=>{cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
-    $('#coResult').innerHTML='';renderCotiz();renderCfg();
+    renderCfg();setCoMode('ped');
   }catch(e){console.error('cotiz',e);$('#coResult').innerHTML='<div class="admuted" style="padding:12px">Error al cargar. ¿Creaste las tablas bolsas_venta, bolsas_precios y bolsas_config?</div>';}
+}
+let coMode='ped';
+function setCoMode(m){
+  coMode=m;
+  $('#coModePed').classList.toggle('sel',m==='ped');
+  $('#coModeSuelto').classList.toggle('sel',m==='suelto');
+  $('#coPedBox').style.display=m==='ped'?'block':'none';
+  $('#coSueltoBox').style.display=m==='suelto'?'block':'none';
+  $('#coResult').innerHTML='';
+  if(m==='suelto'){co={prod:null,med:null,qty:null,colores:1};renderCotiz();}
+  else{$('#coPedVal').textContent='Tocá para buscar';$('#coPedBtn').className='pedidoField empty';}
+}
+function cpiTinta(tipo){const c=CONFIG_TINTA||{};const agua=c.agua_rend?c.agua_precio/c.agua_rend:0;const eva=c.eva_rend?c.eva_precio/c.eva_rend:0;return (tipo&&/agua/i.test(tipo))?agua:eva;}
+async function coCargarPedidoRent(n){
+  $('#coPedVal').textContent='#'+n;$('#coPedBtn').className='pedidoField set';
+  $('#coResult').innerHTML='<div class="admuted" style="padding:12px">Buscando pedido…</div>';
+  try{
+    const {data,error}=await db.from('est_pedidos').select('*, est_lineas(*)').eq('numero',String(n));
+    if(error)throw error;
+    if(!data||!data.length){$('#coResult').innerHTML='<div class="admuted" style="padding:12px">No se encontró el pedido #'+n+'.</div>';return;}
+    const lineas=[];data.forEach(p=>(p.est_lineas||[]).forEach(l=>lineas.push(l)));
+    if(!lineas.length){$('#coResult').innerHTML='<div class="admuted" style="padding:12px">El pedido no tiene líneas.</div>';return;}
+    const totFam={};lineas.forEach(l=>{totFam[l.producto]=(totFam[l.producto]||0)+(l.cantidad||0);});
+    renderPedidoRent(n,lineas,totFam);
+  }catch(e){console.error('coPed',e);$('#coResult').innerHTML='<div class="admuted" style="padding:12px">Error al buscar el pedido.</div>';}
+}
+function renderPedidoRent(n,lineas,totFam){
+  const money=x=>'$'+Math.round(x).toLocaleString('es-AR');
+  const medBase=m=>String(m||'').replace(/\s+negras$/i,'');
+  let TV=0,TB=0,TT=0,TM=0,TG=0;const faltan=new Set();let cards='';
+  lineas.forEach(l=>{
+    const fam=l.producto,med=medBase(l.medida),qty=l.cantidad||0;
+    const tiers=ventaMap[fam+'|'+med];let unit=0,tramo='—';
+    if(tiers&&tiers.length){let t=tiers[0];const base=totFam[fam]||qty;tiers.forEach(x=>{if(base>=x.desde)t=x;});unit=t.total/t.desde;tramo=t.desde;}else{faltan.add('venta '+med);}
+    const venta=unit*qty;
+    const cRec=costoMap[fam+'|'+med+'|'+(l.color_bolsa||'')]||costoMap[fam+'|'+med+'|']||{};
+    const costoU=(cRec.costo!=null&&cRec.costo!=='')?Number(cRec.costo):null;if(costoU==null)faltan.add('costo '+med);
+    const cpi=cpiTinta(l.tipo_tinta);const imp=(l.colores||1)*(l.caras||1);const tintaU=cpi*imp;if(!cpi)faltan.add('config tinta');
+    const manoU=cfg.mano_obra_bolsa!=null?cfg.mano_obra_bolsa:0;
+    const gastU=cfg.gastos_grales_bolsa!=null?cfg.gastos_grales_bolsa:0;
+    const b=(costoU||0)*qty,ti=tintaU*qty,ma=manoU*qty,ga=gastU*qty;
+    TV+=venta;TB+=b;TT+=ti;TM+=ma;TG+=ga;
+    const P=(PRODUCTOS.find(p=>p.id===fam)||{}).name||fam;
+    cards+=`<div class="bcard" style="margin-top:8px"><div class="bch"><span><b>${P} ${l.medida}</b></span><span>${qty.toLocaleString('es-AR')} u · ${l.colores||1}c/${l.caras||1}car · ${l.tipo_tinta||'—'} · tramo ${tramo}</span></div>
+      <div style="padding:6px 2px;font-size:13px;line-height:1.6">Venta ${money(venta)} · bolsa ${money(b)} · tinta ${money(ti)} · MO ${money(ma)} · gastos ${money(ga)}</div></div>`;
+  });
+  const rent=TV-TB-TT-TM-TG;const margen=TV>0?rent/TV*100:0;const col=rent>=0?'#0e7a4f':'#b91c1c';
+  let html=`<div class="bcard" style="margin-top:12px"><div class="bch"><span><b>Pedido #${n} — total</b></span><span>${lineas.length} líneas</span></div>
+    <div style="padding:10px 2px;font-size:14px;line-height:1.85">
+      <div style="font-size:17px">Venta: <b>${money(TV)}</b></div>
+      <div style="margin-top:6px;border-top:1px solid #eee;padding-top:6px">− Bolsa ${money(TB)}<br>− Tinta ${money(TT)}<br>− Mano de obra ${money(TM)}<br>− Gastos grales ${money(TG)}</div>
+      <div style="margin-top:8px;border-top:2px solid #333;padding-top:8px;font-size:19px;color:${col}">Rentabilidad: <b>${money(rent)}</b> (${margen.toFixed(1)}%)</div>`;
+  if(faltan.size)html+=`<div class="admuted" style="font-size:12px;margin-top:6px">Falta cargar: ${[...faltan].join(', ')} — resultado parcial.</div>`;
+  html+='</div></div>';
+  $('#coResult').innerHTML=html+cards;
 }
 function cfgChip(clave,label){
   const v=cfg[clave];const set=(v!=null);
@@ -2548,6 +2609,9 @@ function calcCotiz(){
   cont.innerHTML=html;
 }
 $('#coCfgToggle').onclick=()=>{const p=$('#coCfgPanel');p.style.display=(p.style.display==='none')?'block':'none';};
+$('#coModePed').onclick=()=>setCoMode('ped');
+$('#coModeSuelto').onclick=()=>setCoMode('suelto');
+$('#coPedBtn').onclick=()=>openPad('N° de pedido','',n=>{if(n>0)coCargarPedidoRent(n);});
 $('#cotizBtn').onclick=abrirCotiz;
 function impCargaRaw(c){const li=(c.est_lineas||[]).reduce((a,l)=>a+((l.cantidad)||0)*((l.caras)||1)*((l.colores)||1),0);return (c.impresiones&&c.impresiones>0)?c.impresiones:li;}
 function calcularImpresionesPedido(ped){const L=(ped&&(ped.lineas||ped.est_lineas))||[];return L.reduce((t,l)=>t+(((l.qty??l.cantidad)||0)*((l.caras)||1)*((l.colores)||1)),0);}
