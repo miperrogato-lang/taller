@@ -1199,7 +1199,7 @@ function buildPedidos(){
   L.innerHTML='';
   [...sesion.pedidos].reverse().forEach(p=>{
     const tot=p.lineas.reduce((a,l)=>a+l.qty,0);
-    const meds=p.lineas.map(l=>{const P=PRODUCTOS.find(x=>x.id===l.prod);return `${l.qty.toLocaleString('es-AR')} ${P.name} ${l.med}`;}).join(' · ');
+    const meds=p.lineas.map(l=>{const P=PRODUCTOS.find(x=>x.id===l.prod);const col=l.bolsa?(' '+l.bolsa):'';const asa=l.asaNegra?' · asa negra':'';return `${l.qty.toLocaleString('es-AR')} ${P.name} ${l.med}${col}${asa}`;}).join(' · ');
     const card=document.createElement('div');card.className='pedcard';
     card.innerHTML=`<div class="ph"><span class="pn num">#${p.numero}</span><span class="pest">Impreso ✓</span></div>`+
       `<div class="pmeta">${p.operario}${p.compartido?' · <b>compartido</b>':''} · ${tot.toLocaleString('es-AR')} bolsas</div>`+
