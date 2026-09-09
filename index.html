@@ -693,6 +693,7 @@
       <div class="tabs" id="puntTabs"><button data-p="semana">Semana</button><button data-p="mes" class="on">Mes</button><button data-p="todo">Todo</button></div>
       <div class="expbar"><button class="expbtn pdf" id="puntPdf">📄 PDF</button><button class="expbtn" id="puntXls">📊 Excel</button></div>
       <button class="histbtn" id="ptAjBtn" style="margin-bottom:10px">✏️ Ajustar puntos de un pedido ›</button>
+      <div class="expbar" style="margin-bottom:10px"><button class="expbtn pdf" id="ptTablaA">📄 Tabla base (A4)</button><button class="expbtn pdf" id="ptTablaB">📄 Tabla 200/500/1000</button></div>
       <div class="adkpis"><div class="adkpi"><div class="v num" id="puntTot">0</div><div class="k">Puntos</div></div><div class="adkpi"><div class="v num" id="puntImp">0</div><div class="k">Impresiones</div></div><div class="adkpi"><div class="v num" id="puntPed">0</div><div class="k">Pedidos</div></div></div>
       <div class="adcard"><div class="adh">Puntos por operario</div><div class="adbd" id="puntOps"></div></div>
       <div class="adcard"><div class="adh">Puntos por medida</div><div class="adbd" id="puntMed"></div></div>
@@ -712,6 +713,7 @@
       <div class="calibbanner">Los cambios aplican <b>a la producción nueva</b>. Lo ya registrado no se recalcula.</div>
       <div class="adcard"><div class="adh">Puntos base<small>material · medida · puntos (base 200 u)</small></div><div class="adbd"><div id="cfgBase"></div><button class="addrow" id="cfgAddBase">+ Agregar fila</button></div></div>
       <div class="adcard"><div class="adh">Multiplicadores por cantidad</div><div class="adbd"><div id="cfgMult"></div><button class="addrow" id="cfgAddMult">+ Agregar fila</button></div></div>
+      <div class="adcard"><div class="adh">Multiplicadores por tinta<small>cuánto más valen según el tipo de tinta</small></div><div class="adbd"><div id="cfgTinta"></div></div></div>
       <button class="hero-btn half dark" id="cfgSave" style="width:100%;min-height:52px;font-size:16px">Guardar cambios</button>
       <div id="cfgMsg" style="text-align:center;margin-top:10px;font-weight:700;color:#166534"></div>
     </div>
@@ -2013,6 +2015,22 @@ function renderCfg(){
   $('#cfgBase').querySelectorAll('.cfgi').forEach(el=>el.onchange=()=>{const i=+el.dataset.i,f=el.dataset.f;cfgBaseRows[i][f]=(f==='puntos')?(parseFloat(el.value)||0):el.value;});
   $('#cfgMult').querySelectorAll('.cfgi').forEach(el=>el.onchange=()=>{const i=+el.dataset.i,f=el.dataset.f;cfgMultRows[i][f]=parseFloat(el.value)||0;});
   document.querySelectorAll('.cfgdel').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(b.dataset.t==='base')cfgBaseRows.splice(i,1);else cfgMultRows.splice(i,1);renderCfg();});
+  renderCfgTinta();
+}
+const TINTA_LBL={eva:'Solvente (Eva Flex)',agua:'Al agua',agua_blanca:'Al agua · blanca 1 color'};
+function renderCfgTinta(){
+  const cont=$('#cfgTinta');if(!cont)return;
+  cont.innerHTML=Object.keys(TINTA_LBL).map(k=>{
+    const m=Number(CONFIG_PUNTOS_MULT[k]||1);const pct=Math.round((m-1)*1000)/10;
+    return `<div class="cfgrow"><span style="flex:1;font-size:13px;font-weight:700">${TINTA_LBL[k]}</span>
+      <input data-k="${k}" class="cfgi num cfgtin" type="number" step="1" value="${pct}" style="max-width:90px">
+      <span style="font-size:13px;font-weight:700">% más</span></div>`;
+  }).join('')+'<div class="admuted" style="font-size:12px;margin-top:6px">0% = sin recargo. Ej: 10 = vale 10% más de puntos.</div>';
+  cont.querySelectorAll('.cfgtin').forEach(el=>el.onchange=()=>{
+    const k=el.dataset.k;const pct=parseFloat(el.value);
+    if(isNaN(pct)||pct<-100){el.value=Math.round((CONFIG_PUNTOS_MULT[k]-1)*1000)/10;return;}
+    CONFIG_PUNTOS_MULT[k]=1+pct/100;
+  });
 }
 $('#cfgAddBase').onclick=()=>{cfgBaseRows.push({material:PRODUCTOS[0].id,medida:'',puntos:0});renderCfg();};
 $('#cfgAddMult').onclick=()=>{cfgMultRows.push({cantidad:0,mult:1});renderCfg();};
@@ -2053,6 +2071,12 @@ $('#cfgSave').onclick=async()=>{
       if(error)throw error;
     }
     await loadPuntos();
+    // multiplicadores de tinta -> est_config
+    const mk={eva:'punto_mult_eva',agua:'punto_mult_agua',agua_blanca:'punto_mult_agua_blanca'};
+    for(const k in mk){
+      const {error}=await db.from('est_config').upsert({clave:mk[k],valor:CONFIG_PUNTOS_MULT[k]},{onConflict:'clave'});
+      if(error)throw error;
+    }
     const n=Object.keys(PUNTOS_TABLA).length;
     try{await dbInsert('auditoria',{id:uuid(),entidad:'config',entidad_id:'puntos',accion:'editar',detalle:{medidas:n,multiplicadores:multV.length},usuario:adminWho||'admin'});}catch(e){}
     $('#cfgMsg').textContent='✓ Guardado · '+n+' medidas activas. Aplica a la producción nueva.';
@@ -2076,8 +2100,28 @@ function multCantidad(q){
   const n=A.length,x0=A[n-2][0],y0=A[n-2][1],x1=A[n-1][0],y1=A[n-1][1],slope=(y1-y0)/(x1-x0);return y1+slope*(q-x1);
 }
 function multTinta(l){if(!l)return 1;const agua=(l.tipo_tinta==='Al agua'||l.tipo==='Al agua');if(!agua)return CONFIG_PUNTOS_MULT.eva;const blanca=((l.colores||1)===1)&&(l.tinta==='Blanco');return blanca?CONFIG_PUNTOS_MULT.agua_blanca:CONFIG_PUNTOS_MULT.agua;}
-function puntosLinea(prod,medida,cantidad,l){const base=PUNTOS_TABLA[prod+'|'+medida];if(base==null)return 0;return Math.round(base*multCantidad(cantidad||0)*multTinta(l));}
-function puntosDe(p){const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+(l.puntos!=null?Number(l.puntos):0),0);}
+function ptBaseMedida(prod,medida){
+  const T=PUNTOS_TABLA||{};
+  let m=String(medida||'').trim();
+  if(T[prod+'|'+m]!=null)return Number(T[prod+'|'+m]);
+  // variantes: "30×40 asas negras" → "30×40 asas" → "30×40"; "20×35 +solapa" → "20×35"
+  const variantes=[
+    m.replace(/\s+negras$/i,''),
+    m.replace(/\s+negras$/i,'').replace(/\s+(asas|riñon|riñón|rinon)$/i,''),
+    m.replace(/\s*\+\s*solapa$/i,''),
+    m.split(' ')[0]
+  ];
+  for(const v of variantes){const k=prod+'|'+v.trim();if(T[k]!=null)return Number(T[k]);}
+  // último intento: comparar solo los números de la medida (20×35 vs 20x35)
+  const nums=m.match(/\d+\s*[×xX]\s*\d+/);
+  if(nums){const canon=nums[0].replace(/\s|x|X/g,'×');
+    for(const k in T){if(k.indexOf(prod+'|')!==0)continue;const kn=k.split('|')[1].match(/\d+\s*[×xX]\s*\d+/);if(kn&&kn[0].replace(/\s|x|X/g,'×')===canon)return Number(T[k]);}}
+  return null;
+}
+function puntosLinea(prod,medida,cantidad,l){const base=ptBaseMedida(prod,medida);if(base==null)return 0;return Math.round(base*multCantidad(cantidad||0)*multTinta(l));}
+function puntosLineaVivo(l){const p=puntosLinea(l.producto,l.medida,l.cantidad||0,l);return p;}
+function puntosDe(p){const L=p.est_lineas||p.lineas||[];return L.reduce((a,l)=>a+ptPuntosLinea(l),0);}
+function ptPuntosLinea(l){const g=(l.puntos!=null?Number(l.puntos):0);if(g>0)return g;return puntosLineaVivo(l);}
 function redondearObj(o){const r={};for(const k in o)r[k]=Math.round(o[k]);return r;}
 let puntPeriodo='mes';
 $('#puntBtn').onclick=()=>{show('scPuntos');renderPuntos();ptAvisoTabla();};
@@ -2148,6 +2192,73 @@ async function ptAjGuardar(l,valor){
 $('#ptAjBtn').onclick=()=>{ptAj={numero:null,lineas:[]};$('#ptAjPedVal').textContent='Tocá para buscar';$('#ptAjPedBtn').className='pedidoField empty';$('#ptAjBody').innerHTML='';show('scPtAj');};
 $('#ptAjBack').onclick=()=>show('scPuntos',false);
 $('#ptAjPedBtn').onclick=()=>openPad('N° de pedido','',n=>{if(n>0)ptAjBuscar(n);});
+
+/* ── PDF: tabla de referencia de puntos ── */
+function ptFilasBase(){
+  const out=[];
+  PRODUCTOS.forEach(P=>{
+    (P.med||[]).forEach(m=>{
+      const base=PUNTOS_TABLA[P.id+'|'+m];
+      if(base==null)return;
+      out.push({fam:P.name,med:m,base:Number(base)});
+    });
+  });
+  return out;
+}
+function ptPdf(modo){
+  if(!window.jspdf){toastMsg('⚠ No se pudo cargar el PDF');return;}
+  const filas=ptFilasBase();
+  if(!filas.length){toastMsg('⚠ La tabla de puntos está vacía');return;}
+  const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});
+  const W=doc.internal.pageSize.getWidth();
+  const M=CONFIG_PUNTOS_MULT;
+  const f=(v)=>Math.round(v).toLocaleString('es-AR');
+  doc.setFont('helvetica','bold');doc.setFontSize(15);
+  doc.text('GrafiPack · Tabla de puntos',40,46);
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(110);
+  doc.text(modo==='A'?'Puntos por medida sobre cantidad base (200 u)':'Puntos ya calculados para 200 / 500 / 1000 unidades',40,62);
+  doc.text('Generado '+new Date().toLocaleDateString('es-AR'),W-40,62,{align:'right'});
+  doc.setTextColor(0);
+  let head,body;
+  if(modo==='A'){
+    head=[['Sustrato','Medida','Solvente','Al agua','Agua blanca']];
+    body=filas.map(r=>[r.fam,r.med,f(r.base*M.eva),f(r.base*M.agua),f(r.base*M.agua_blanca)]);
+  }else{
+    const qs=[200,500,1000];
+    head=[[{content:'Sustrato',rowSpan:2},{content:'Medida',rowSpan:2},...qs.map(q=>({content:q+' u',colSpan:3,styles:{halign:'center'}}))],
+          [...qs.flatMap(()=>['Solv.','Agua','A.blanca'])]];
+    body=filas.map(r=>{
+      const cells=[r.fam,r.med];
+      qs.forEach(q=>{const mc=multCantidad(q);cells.push(f(r.base*mc*M.eva),f(r.base*mc*M.agua),f(r.base*mc*M.agua_blanca));});
+      return cells;
+    });
+  }
+  doc.autoTable({head,body,startY:78,theme:'grid',
+    styles:{fontSize:modo==='A'?9:7.5,cellPadding:modo==='A'?4:2.6,lineColor:[220,220,220]},
+    headStyles:{fillColor:[23,32,42],textColor:255,fontSize:modo==='A'?9:7.5,halign:'center'},
+    columnStyles:modo==='A'?{0:{cellWidth:90},1:{cellWidth:120},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'}}
+      :{0:{cellWidth:64},1:{cellWidth:86}},
+    bodyStyles:{halign:'right'},
+    didParseCell:d=>{if(d.column.index<2)d.cell.styles.halign='left';},
+    alternateRowStyles:{fillColor:[248,248,248]}});
+  let y=doc.lastAutoTable.finalY+18;
+  doc.setFont('helvetica','bold');doc.setFontSize(10);doc.text('Recargo por tinta',40,y);
+  doc.setFont('helvetica','normal');doc.setFontSize(9);
+  const pct=v=>(Math.round((v-1)*1000)/10)+'%';
+  doc.text('Solvente (Eva Flex): base · Al agua: +'+pct(M.agua)+' · Al agua blanca 1 color: +'+pct(M.agua_blanca),40,y+15);
+  if(modo==='A'){
+    y+=38;
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.text('Multiplicadores por cantidad',40,y);
+    doc.setFont('helvetica','normal');doc.setFontSize(9);
+    const txt=(PUNTOS_MULT||[]).map(([c,m])=>c.toLocaleString('es-AR')+' u → ×'+m).join('   ·   ')||'sin configurar';
+    doc.text(txt,40,y+15,{maxWidth:W-80});
+    doc.setTextColor(120);doc.setFontSize(8);
+    doc.text('Puntos de una línea = base de la medida × multiplicador por cantidad × recargo por tinta.',40,y+34,{maxWidth:W-80});
+  }
+  doc.save('Puntos_'+(modo==='A'?'tabla_base':'por_cantidad')+'_'+new Date().toISOString().slice(0,10)+'.pdf');
+}
+$('#ptTablaA').onclick=()=>ptPdf('A');
+$('#ptTablaB').onclick=()=>ptPdf('B');
 $('#puntTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...$('#puntTabs').children].forEach(x=>x.classList.toggle('on',x===b));puntPeriodo=b.dataset.p;renderPuntos();});
 async function renderPuntos(){
   let start;const now=new Date();
@@ -2157,7 +2268,7 @@ async function renderPuntos(){
   ['puntOps','puntMed','puntMat'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
   const peds=await fetchPedidosRango(start,null);
   let tot=0,imp=0;const ops={},med={},mat={};
-  peds.forEach(p=>{const pp=puntosDe(p);tot+=pp;imp+=impresionesDe(p);ops[p.operario]=(ops[p.operario]||0)+pp;(p.est_lineas||[]).forEach(l=>{const pl=(l.puntos!=null?Number(l.puntos):0);med[l.medida]=(med[l.medida]||0)+pl;const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;mat[nm]=(mat[nm]||0)+pl;});});
+  peds.forEach(p=>{const pp=puntosDe(p);tot+=pp;imp+=impresionesDe(p);ops[p.operario]=(ops[p.operario]||0)+pp;(p.est_lineas||[]).forEach(l=>{const pl=ptPuntosLinea(l);med[l.medida]=(med[l.medida]||0)+pl;const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;mat[nm]=(mat[nm]||0)+pl;});});
   puntExport={label:(puntPeriodo==='semana'?'Semana':puntPeriodo==='mes'?'Mes':'Todo'),tot,imp,peds:peds.length,ops,med,mat};
   $('#puntTot').textContent=Math.round(tot).toLocaleString('es-AR');$('#puntImp').textContent=imp.toLocaleString('es-AR');$('#puntPed').textContent=peds.length;
   $('#puntOps').innerHTML=rankBarsN(redondearObj(ops),null,12);
