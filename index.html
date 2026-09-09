@@ -805,6 +805,7 @@
       <div class="sect" id="ccSecWho"><h2 class="step" data-n="1">¿Quién carga el control?</h2><div class="grid names" id="ccWhoGrid"></div></div>
       <div id="ccBody" style="display:none">
         <button class="pedidoField empty" id="ccPedBtn"><span class="lbl">N° de pedido</span><span class="val" id="ccPedVal">Tocá para buscar</span></button>
+        <div id="ccLista"></div>
         <div id="ccPedInfo"></div>
       </div>
       <div class="actions" id="ccActions" style="display:none">
@@ -2488,7 +2489,43 @@ function abrirControl(){
   ccRenderWho(false);
   show('scControl');
 }
-function ccPickWho(n){cc.who=n;cc.controlPor=n;$('#ccWhoName').textContent=n;$('#ccSecWho').style.display='none';$('#ccBody').style.display='block';$('#ccActions').style.display='flex';}
+function ccPickWho(n){cc.who=n;cc.controlPor=n;$('#ccWhoName').textContent=n;$('#ccSecWho').style.display='none';$('#ccBody').style.display='block';$('#ccActions').style.display='flex';ccCargarLista();}
+async function ccCargarLista(){
+  const L=$('#ccLista');if(!L)return;
+  L.style.display='block';
+  L.innerHTML='<div class="admuted" style="padding:12px">Cargando últimos pedidos…</div>';
+  try{
+    const desde=new Date();desde.setDate(desde.getDate()-30);
+    const [p,c]=await Promise.all([
+      db.from('est_pedidos').select('numero, operario, created_at, est_lineas(cantidad)').gte('created_at',desde.toISOString()).order('created_at',{ascending:false}).limit(120),
+      db.from('est_control').select('numero, controlado_por, created_at')
+    ]);
+    if(p.error)throw p.error;
+    const hechos={};(c.data||[]).forEach(r=>{hechos[String(r.numero)]={por:r.controlado_por,fecha:r.created_at};});
+    const map={};
+    (p.data||[]).forEach(r=>{
+      const k=String(r.numero);
+      if(!map[k])map[k]={numero:k,operario:r.operario,fecha:r.created_at,bolsas:0};
+      (r.est_lineas||[]).forEach(l=>{map[k].bolsas+=(l.cantidad||0);});
+    });
+    const lista=Object.values(map).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+    if(!lista.length){L.innerHTML='<div class="admuted" style="padding:12px">No hay pedidos en los últimos 30 días.</div>';return;}
+    const pend=lista.filter(x=>!hechos[x.numero]).length;
+    let html=`<div class="admuted" style="padding:8px 2px;font-size:12px"><b>${pend}</b> pendientes de ${lista.length} pedidos · últimos 30 días</div>`;
+    lista.forEach(x=>{
+      const h=hechos[x.numero];
+      const badge=h?`<span style="background:#dcfce7;color:#166534;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800">✓ Controlado</span>`
+                   :`<span style="background:#fef3c7;color:#92400e;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800">⏳ Pendiente</span>`;
+      const f=new Date(x.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'});
+      html+=`<div class="pedcard ccrow" data-n="${x.numero}" style="cursor:pointer;${h?'opacity:.72':''}">
+        <div class="ph"><span class="pn num">#${x.numero}</span>${badge}</div>
+        <div class="pmeta">${x.operario||'—'} · ${x.bolsas.toLocaleString('es-AR')} bolsas · ${f}</div>
+        ${h?`<div class="plines">Controló ${h.por||'—'}</div>`:''}</div>`;
+    });
+    L.innerHTML=html;
+    L.querySelectorAll('.ccrow').forEach(el=>el.onclick=()=>ccCargarPedido(el.dataset.n));
+  }catch(e){console.error('ccLista',e);L.innerHTML='<div class="admuted" style="padding:12px">No se pudo cargar la lista. ¿Existe la tabla est_control?</div>';}
+}
 function ccRenderWho(full){
   const g=$('#ccWhoGrid');g.innerHTML='';
   if(full){(EQUIPO||[]).forEach(n=>{const b=tile(n,'nametile');b.onclick=()=>ccPickWho(n);g.appendChild(b);});return;}
@@ -2499,6 +2536,7 @@ function ccRenderWho(full){
 }
 async function ccCargarPedido(n){
   cc.numero=String(n);cc.rows=[];
+  const _L=$('#ccLista');if(_L)_L.style.display='none';
   $('#ccPedVal').textContent='#'+n;$('#ccPedBtn').className='pedidoField set';
   $('#ccPedInfo').innerHTML='<div class="admuted" style="padding:12px">Buscando…</div>';
   try{
@@ -2577,7 +2615,10 @@ async function ccGuardar(){
     if(res&&res.offline){toastMsg('🟠 Guardado offline, se sincroniza al reconectar');}
     else{toastMsg('✓ Control guardado');}
     try{await dbInsert('auditoria',{id:uuid(),entidad:'control',entidad_id:cc.numero,accion:'registrar',detalle:{filas:rows.length},usuario:cc.who});}catch(e){}
-    scStack.length=0;scStack.push('scHome');show('scHome',false);
+    cc.numero=null;cc.rows=[];
+    $('#ccPedInfo').innerHTML='';$('#ccPedVal').textContent='Tocá para buscar';$('#ccPedBtn').className='pedidoField empty';
+    btn.disabled=true;btn.textContent='Guardar control ›';
+    ccCargarLista();
   }catch(e){console.error('ccGuardar',e);btn.disabled=false;btn.textContent='Guardar control ›';toastMsg('⚠ No se pudo guardar');}
 }
 async function ccMetricas(){
@@ -2611,7 +2652,7 @@ async function ccMetricas(){
 }
 $('#controlBtn').onclick=abrirControl;
 $('#ccPedBtn').onclick=()=>openPad('N° de pedido','',n=>{if(n>0)ccCargarPedido(n);});
-$('#ccChgWho').onclick=()=>{cc.who=null;$('#ccWhoName').textContent='—';$('#ccSecWho').style.display='block';$('#ccBody').style.display='none';$('#ccActions').style.display='none';ccRenderWho(false);};
+$('#ccChgWho').onclick=()=>{cc.who=null;$('#ccWhoName').textContent='—';$('#ccSecWho').style.display='block';$('#ccBody').style.display='none';$('#ccActions').style.display='none';$('#ccLista').innerHTML='';$('#ccPedInfo').innerHTML='';ccRenderWho(false);};
 $('#ccSave').onclick=ccGuardar;
 $('#ccStatsBtn').onclick=ccMetricas;
 
