@@ -830,6 +830,7 @@
         <button class="tile" id="rtTab2">Gastos</button>
         <button class="tile" id="rtTab3">Costo bolsas</button>
       </div>
+      <div class="grid c1" style="margin:-4px 0 10px"><button class="tile" id="rtTab4">🏆 Premio por impresiones (privado)</button></div>
       <div id="rtPane1">
         <div class="grid c3" style="margin-bottom:8px"><button class="tile" id="coModePed">📄 Por pedido</button><button class="tile" id="coModePer">📅 Por período</button><button class="tile" id="coModeSuelto">✏️ Suelto</button></div>
         <div id="coPedBox">
@@ -871,6 +872,7 @@
         <div class="admuted" style="padding:2px 2px 10px">Costo de la bolsa en blanco, por unidad. Va por medida; abrí "Precio por color" solo donde una variante valga distinto.</div>
         <div id="precBody"></div>
       </div>
+      <div id="rtPane4" style="display:none"></div>
     </div>
 
 
@@ -3724,8 +3726,103 @@ async function editarPremio(){
           Math.round(10000*val/emp).toLocaleString('es-AR')+'.');
   }catch(e){console.error('editarPremio',e);toastMsg('⚠ No se pudo guardar');}
 }
+/* ── PREMIO POR IMPRESIONES — pantalla privada de análisis (solo administrador) ── */
+function diasHabilesMes(y,m,hastaDia){
+  let n=0;const fin=hastaDia||new Date(y,m+1,0).getDate();
+  for(let d=1;d<=fin;d++){const dt=new Date(y,m,d);const dow=dt.getDay();
+    if(dow!==0&&dow!==6&&!isFeriado(dt))n++;}
+  return n;
+}
+async function renderPremio(){
+  const el=$('#rtPane4');if(!el)return;
+  el.innerHTML='<div class="admuted" style="padding:14px">Calculando…</div>';
+  try{
+    if(!await cargarDatosRent()){el.innerHTML='<div class="admuted" style="padding:14px">No se pudo leer la cuenta de precios y costos.</div>';return;}
+    Object.keys(PREMIO_DEF).forEach(k=>{if(cfg[k]==null)cfg[k]=PREMIO_DEF[k];});
+    const meta=Number(cfg.premio_meta),valor=Number(cfg.premio_valor),emp=Number(cfg.premio_empleados)||1;
+    const M=n=>'$'+Math.round(n||0).toLocaleString('es-AR');
+    const N=n=>Math.round(n||0).toLocaleString('es-AR');
+
+    // ── mes en curso ──
+    const now=new Date(),y=now.getFullYear(),mo=now.getMonth();
+    const ini=new Date(y,mo,1);
+    const peds=await fetchPedidosRango(ini.toISOString(),null);
+    const H=await horasEquipo(perISO(ini),perISO(now));
+    const R=calcRentPedidos(peds,H.porDia);
+    const dh=diasHabilesMes(y,mo,now.getDate()),dhTot=diasHabilesMes(y,mo);
+    const imp=R.T.imp;
+    const proy=dh>0?Math.round(imp/dh*dhTot):0;
+    const exHoy=Math.max(0,imp-meta),exProy=Math.max(0,proy-meta);
+    const ritmoNec=dhTot>0?meta/dhTot:0, ritmoReal=dh>0?imp/dh:0;
+    const pctRitmo=ritmoNec>0?(ritmoReal/ritmoNec*100):0;
+    const sem=pctRitmo>=105?['🟢','#0e7a4f','Arriba del ritmo']:(pctRitmo>=95?['🟡','#b45309','En el ritmo justo']:['🔴','#b91c1c','Atrasado']);
+    const hrs=(H.minTot||0)/60;
+    const impH=hrs>0?imp/hrs:0;
+
+    let h=`<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12.5px;color:#92400e;line-height:1.5">
+      🔒 <b>Pantalla privada.</b> El equipo no ve nada de esto. Sirve para calibrar la meta antes de anunciar el premio.</div>`;
+
+    h+=`<div class="bcard"><div class="bch"><span><b>Parámetros</b></span><span>editables</span></div>
+      <div style="padding:8px 2px;font-size:13.5px;line-height:1.8">
+        Meta: <b>${N(meta)}</b> impresiones · Valor: <b>${M(valor)}</b> por impresión excedente · Reparto entre <b>${emp}</b><br>
+        <span class="admuted">Equivale a ${N(dhTot>0?meta/dhTot:0)} impresiones por día hábil (${dhTot} días este mes)</span>
+      </div>
+      <button class="accb copy" id="premEdit" style="font-size:12px">⚙ Cambiar parámetros</button></div>`;
+
+    h+=`<div class="bcard" style="margin-top:10px"><div class="bch"><span><b>Mes en curso</b></span><span>${dh} de ${dhTot} días hábiles</span></div>
+      <div style="padding:10px 2px;font-size:14px;line-height:1.85">
+        <div style="font-size:18px">${sem[0]} <b style="color:${sem[1]}">${sem[2]}</b> <span class="admuted">(${pctRitmo.toFixed(0)}% del ritmo necesario)</span></div>
+        <div style="margin-top:6px;border-top:1px solid #eee;padding-top:6px">
+        Impresiones hasta hoy: <b>${N(imp)}</b> de ${N(meta)}<br>
+        Proyección a fin de mes: <b>${N(proy)}</b><br>
+        Horas del equipo: <b>${ExportService.hm(H.minNorm||0)}</b> normales + <b>${ExportService.hm(H.minExtra||0)}</b> extras<br>
+        Impresiones por hora-persona: <b>${impH.toFixed(1)}</b></div>
+        <div style="margin-top:8px;border-top:2px solid #333;padding-top:8px">
+        Pozo si el mes cerrara hoy: <b style="font-size:17px">${M(exHoy*valor)}</b> <span class="admuted">(${M(exHoy*valor/emp)} c/u)</span><br>
+        Pozo proyectado: <b style="font-size:19px;color:${exProy>0?'#0e7a4f':'#6b7280'}">${M(exProy*valor)}</b> <span class="admuted">(${M(exProy*valor/emp)} c/u)</span></div>
+      </div></div>`;
+
+    // ── back-test de los meses anteriores ──
+    if(!HIST_CACHE){try{HIST_CACHE=await histMensual(6);}catch(e){console.error(e);}}
+    const hist=(HIST_CACHE||[]).filter(x=>x.mes!==perISO(now).slice(0,7));
+    if(hist.length){
+      let f='';
+      hist.forEach(x=>{
+        const ex=Math.max(0,x.impresiones-meta),pozo=ex*valor;
+        const col=pozo>0?'#0e7a4f':'#b91c1c';
+        f+=`<tr><td>${x.mes}</td><td class="num">${ExportService.hm(x.horas)}</td><td class="num">${N(x.impresiones)}</td><td class="num">${N(x.impH)}</td><td class="num">${N(ex)}</td><td class="num" style="color:${col};font-weight:700">${M(pozo)}</td><td class="num">${M(pozo/emp)}</td></tr>`;
+      });
+      h+=`<div class="bcard" style="margin-top:10px"><div class="bch"><span><b>Qué hubiera pasado</b></span><span>meses cerrados, con la meta actual</span></div>
+        <div style="overflow:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="text-align:left;border-bottom:2px solid #333"><th>Mes</th><th>Horas</th><th>Impres.</th><th>Imp/h</th><th>Excedente</th><th>Pozo</th><th>C/u</th></tr></thead>
+        <tbody>${f}</tbody></table></div></div>`;
+
+      // ── prueba de metas ──
+      const metas=[meta-15000,meta-10000,meta-5000,meta,meta+5000,meta+10000].filter(x=>x>0);
+      let g='';
+      metas.forEach(mt=>{
+        let pagos=0,total=0;
+        hist.forEach(x=>{const ex=Math.max(0,x.impresiones-mt);if(ex>0){pagos++;total+=ex*valor;}});
+        const prom=hist.length?total/hist.length:0;
+        const marca=mt===meta?' style="background:#fff7ed;font-weight:700"':'';
+        g+=`<tr${marca}><td>${N(mt)}</td><td class="num">${pagos} de ${hist.length}</td><td class="num">${M(total)}</td><td class="num">${M(prom)}</td><td class="num">${M(prom/emp)}</td></tr>`;
+      });
+      h+=`<div class="bcard" style="margin-top:10px"><div class="bch"><span><b>Prueba de metas</b></span><span>sobre esos mismos meses</span></div>
+        <div style="overflow:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="text-align:left;border-bottom:2px solid #333"><th>Meta</th><th>Meses que pagan</th><th>Total</th><th>Promedio/mes</th><th>C/u por mes</th></tr></thead>
+        <tbody>${g}</tbody></table></div>
+        <div class="admuted" style="font-size:12px;margin-top:8px;line-height:1.6">Si una meta paga en todos los meses sin que nadie haya cambiado nada, está baja. Si no paga en ninguno, nadie se va a enganchar. Buscá la que pague en algunos.</div></div>`;
+    }else{
+      h+=`<div class="bcard" style="margin-top:10px"><div style="padding:14px;font-size:13.5px">Todavía no hay meses cerrados para comparar. Volvé el mes que viene.</div></div>`;
+    }
+
+    el.innerHTML=h;
+    const be=document.getElementById('premEdit');
+    if(be)be.onclick=async()=>{await editarPremio();renderPremio();};
+  }catch(e){console.error('renderPremio',e);el.innerHTML='<div class="admuted" style="padding:14px">Error al calcular. Revisá que haya pedidos y precios cargados.</div>';}
+}
 function rtTab(n){
-  [1,2,3].forEach(i=>{
+  [1,2,3,4].forEach(i=>{
     const t=$('#rtTab'+i),p=$('#rtPane'+i);
     if(t)t.classList.toggle('sel',i===n);
     if(p)p.style.display=(i===n)?'block':'none';
@@ -3733,7 +3830,9 @@ function rtTab(n){
   if(n===1)setCoMode(coMode||'ped');
   if(n===2)renderGastos();
   if(n===3)renderPrecios();
+  if(n===4)renderPremio();
 }
+$('#rtTab4').onclick=()=>rtTab(4);
 $('#rtTab1').onclick=()=>rtTab(1);
 $('#rtTab2').onclick=()=>rtTab(2);
 $('#rtTab3').onclick=()=>rtTab(3);
