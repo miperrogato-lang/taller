@@ -1536,6 +1536,17 @@ async function renderAnalitica(){
   ['anaMat','anaMed','anaComb','anaColB','anaColAgua','anaColSolv','anaTintaUso','anaOps','anaTend','anaAudit','anaFrisTinta','anaEco','anaDistrib','anaRend'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
   const peds=await fetchPedidosRango(r[0],r[1]);const a=analizarPedidos(peds);
   anaExport={a,rango:r,peds};$('#anaBol').textContent=a.bolsas.toLocaleString('es-AR');$('#anaImp').textContent=a.impresiones.toLocaleString('es-AR');$('#anaPed').textContent=a.pedidos;
+  // Rentabilidad para el reporte. Si la cuenta del stock no responde, el reporte sale igual sin esta parte.
+  try{
+    if(await cargarDatosRent()){
+      const d0=(r[0]||'').slice(0,10),d1=hoyISO();
+      const H=await horasEquipo(d0,d1);
+      anaExport.rent=calcRentPedidos(peds,H.porDia);
+      anaExport.horas=H;
+      if(!HIST_CACHE){try{HIST_CACHE=await histMensual(6);}catch(e){console.error('hist',e);}}
+      anaExport.hist=HIST_CACHE;
+    }
+  }catch(e){console.error('rentabilidad analítica',e);}
   renderAudit(peds);renderAnaExtra(a,r,peds);
   $('#anaTend').innerHTML=tendenciaSVG(peds);
   $('#anaMat').innerHTML=rankBarsN(a.mat,null,8);
@@ -1652,6 +1663,146 @@ function horDescriptor(m){
       {titulo:'Detalle diario',columnas:[{key:'empleado',label:'Empleado'},{key:'fecha',label:'Fecha'},{key:'tipo',label:'Tipo día'},{key:'estado',label:'Estado'},{key:'bloques',label:'Bloques'},{key:'normal',label:'Normales',fmt:'time'},{key:'extra',label:'Extras',fmt:'time'},{key:'total',label:'Total',fmt:'time'}],filas:detalle}
     ],archivo:'Horas_'+m.desde+'_'+m.hasta};
 }
+/* ══════════════════════════════════════════════════════════════
+   RENTABILIDAD EN ANALÍTICA — datos para el PDF/Excel
+   Reutiliza precios (bolsas_venta), costos (bolsas_precios) y
+   parámetros (bolsas_config) de la cuenta del stock.
+   Si esa cuenta no responde, el reporte sale igual sin esta parte.
+   ══════════════════════════════════════════════════════════════ */
+let RENT_OK=false, HIST_CACHE=null;
+const PREMIO_DEF={premio_meta:100000,premio_valor:75,premio_empleados:9,premio_horas_min:0};
+
+// Carga precios/costos/config una sola vez por sesión.
+async function cargarDatosRent(force){
+  if(RENT_OK&&!force)return true;
+  if(!dbStock)return false;
+  try{
+    const [v,c,k]=await Promise.all([
+      dbStock.from('bolsas_venta').select('*'),
+      dbStock.from('bolsas_precios').select('*'),
+      dbStock.from('bolsas_config').select('*')
+    ]);
+    if(v.error||c.error||k.error)throw (v.error||c.error||k.error);
+    ventaMap={};costoMap={};
+    (v.data||[]).forEach(r=>{const key=r.familia+'|'+r.medida;(ventaMap[key]=ventaMap[key]||[]).push({desde:r.desde,total:Number(r.precio_total)});});
+    Object.values(ventaMap).forEach(x=>x.sort((p,q)=>p.desde-q.desde));
+    (c.data||[]).forEach(r=>{costoMap[r.familia+'|'+r.medida+'|'+(r.color||'')]={costo:r.costo};});
+    (k.data||[]).forEach(r=>{cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
+    Object.keys(PREMIO_DEF).forEach(k2=>{if(cfg[k2]==null)cfg[k2]=PREMIO_DEF[k2];});
+    RENT_OK=true;return true;
+  }catch(e){console.error('cargarDatosRent',e);return false;}
+}
+
+function nomProd(id){const p=PRODUCTOS.find(x=>x.id===id);return p?p.name:id;}
+
+// Horas del equipo en el rango: pago por jornada (mano de obra real) y totales.
+async function horasEquipo(desde,hasta){
+  const porDia={},minDia={};let minNorm=0,minExtra=0,pagoTot=0;const emps=new Set();
+  try{
+    const h=await HorasService.modelo(desde,hasta,'__all__','');
+    (h.empleados||[]).forEach(e=>{
+      if(esNoLiquidable(e.empleado))return;
+      emps.add(e.empleado);
+      (e.dias||[]).forEach(d=>{
+        const n=d.normal||0,x=d.extra||0;
+        const pago=n/60*CONFIG_LIQ.hora_normal+x/60*CONFIG_LIQ.hora_extra;
+        minNorm+=n;minExtra+=x;pagoTot+=pago;
+        minDia[d.fecha]=(minDia[d.fecha]||0)+n+x;
+        if(pago>0)porDia[d.fecha]=(porDia[d.fecha]||0)+pago;
+      });
+    });
+  }catch(e){console.error('horasEquipo',e);}
+  return {porDia,minDia,minNorm,minExtra,minTot:minNorm+minExtra,pagoTot,empleados:emps.size};
+}
+
+// Núcleo: valoriza cada línea y agrega por producto, medida, jornada y pedido.
+// La mano de obra real del día se reparte entre las líneas segun sus impresiones.
+function calcRentPedidos(peds,moDia){
+  const medBase=m=>String(m||'').replace(/\s+negras$/i,'');
+  const gastU=cfg.gastos_grales_bolsa!=null?Number(cfg.gastos_grales_bolsa):0;
+  const manoPror=cfg.mano_obra_bolsa!=null?Number(cfg.mano_obra_bolsa):0;
+  const faltan=new Set();const lineas=[];const impDia={};
+
+  (peds||[]).forEach(p=>{
+    const fecha=perISO(new Date(p.created_at));
+    const L=p.est_lineas||[];
+    const totFam={};L.forEach(l=>{totFam[l.producto]=(totFam[l.producto]||0)+(l.cantidad||0);});
+    L.forEach(l=>{
+      const fam=l.producto,med=medBase(l.medida),qty=l.cantidad||0;
+      const imp=qty*((l.colores||1)*(l.caras||1));
+      const tiers=ventaMap[fam+'|'+med];let unit=0;
+      if(tiers&&tiers.length){let t=tiers[0];const base=totFam[fam]||qty;tiers.forEach(x=>{if(base>=x.desde)t=x;});unit=t.total/t.desde;}
+      else faltan.add('Precio de venta · '+nomProd(fam)+' '+med);
+      const cRec=costoMap[fam+'|'+med+'|'+(l.color_bolsa||'')]||costoMap[fam+'|'+med+'|']||{};
+      const costoU=(cRec.costo!=null&&cRec.costo!=='')?Number(cRec.costo):null;
+      if(costoU==null)faltan.add('Costo de bolsa · '+nomProd(fam)+' '+med);
+      const cpi=cpiTinta(l.tipo_tinta);
+      impDia[fecha]=(impDia[fecha]||0)+imp;
+      lineas.push({fecha,pedido:String(p.numero),operario:p.operario,fam,med,qty,imp,
+        venta:unit*qty,unit,bolsa:(costoU||0)*qty,tinta:cpi*imp,gastos:gastU*qty});
+    });
+  });
+
+  const T={venta:0,bolsa:0,tinta:0,mano:0,gastos:0,bolsas:0,imp:0};
+  const prod={},medida={},dia={},ped={};
+  const nuevo=()=>({venta:0,bolsa:0,tinta:0,mano:0,gastos:0,bolsas:0,imp:0,peds:new Set()});
+
+  lineas.forEach(L=>{
+    // reparto de la mano de obra real del día, proporcional a las impresiones
+    let mano;
+    const mdia=moDia?moDia[L.fecha]:0;
+    if(mdia&&impDia[L.fecha]>0)mano=mdia*(L.imp/impDia[L.fecha]);
+    else mano=manoPror*L.qty;
+    const add=(o)=>{o.venta+=L.venta;o.bolsa+=L.bolsa;o.tinta+=L.tinta;o.mano+=mano;o.gastos+=L.gastos;o.bolsas+=L.qty;o.imp+=L.imp;if(o.peds)o.peds.add(L.pedido);};
+    add(T);
+    add(prod[L.fam]=prod[L.fam]||nuevo());
+    const mk=L.fam+'|'+L.med;
+    add(medida[mk]=medida[mk]||Object.assign(nuevo(),{fam:L.fam,med:L.med,unit:L.unit}));
+    add(dia[L.fecha]=dia[L.fecha]||nuevo());
+    const pk=L.pedido;
+    add(ped[pk]=ped[pk]||Object.assign(nuevo(),{numero:pk,operario:L.operario,fecha:L.fecha}));
+  });
+
+  const cerrar=o=>{o.costo=o.bolsa+o.tinta+o.mano+o.gastos;o.rent=o.venta-o.costo;o.margen=o.venta>0?o.rent/o.venta*100:0;if(o.peds)o.pedidos=o.peds.size;return o;};
+  cerrar(T);
+  Object.values(prod).forEach(cerrar);Object.values(medida).forEach(cerrar);
+  Object.values(dia).forEach(cerrar);Object.values(ped).forEach(cerrar);
+  return {T,prod,medida,dia,ped,faltan:[...faltan].sort(),sinDatos:lineas.length===0};
+}
+
+// Histórico por mes: horas del equipo, impresiones, impresiones/hora y margen.
+async function histMensual(meses){
+  const now=new Date();
+  const ini=new Date(now.getFullYear(),now.getMonth()-(meses-1),1);
+  const peds=await fetchPedidosRango(ini.toISOString(),null);
+  const H=await horasEquipo(perISO(ini),perISO(now));
+  const porMes={};
+  (peds||[]).forEach(p=>{
+    const d=new Date(p.created_at);const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    (porMes[k]=porMes[k]||[]).push(p);
+  });
+  const minMes={};
+  Object.entries(H.minDia||{}).forEach(([f,m])=>{const k=String(f).slice(0,7);minMes[k]=(minMes[k]||0)+m;});
+  return Object.keys(porMes).sort().map(k=>{
+    const r=calcRentPedidos(porMes[k],H.porDia);
+    const min=minMes[k]||0,hrs=min/60;
+    return {mes:k,bolsas:r.T.bolsas,impresiones:r.T.imp,pedidos:Object.keys(r.ped).length,
+      horas:min,impH:hrs?Math.round(r.T.imp/hrs):0,venta:r.T.venta,rent:r.T.rent,margen:r.T.margen};
+  });
+}
+
+// Simulación del pozo de premio sobre las impresiones del período.
+function simPremio(impresiones,rentTotal,H){
+  const meta=Number(cfg.premio_meta||PREMIO_DEF.premio_meta);
+  const valor=Number(cfg.premio_valor||PREMIO_DEF.premio_valor);
+  const emp=Number(cfg.premio_empleados||PREMIO_DEF.premio_empleados)||1;
+  const hmin=Number(cfg.premio_horas_min||0);
+  const horasOk=!hmin||((H&&H.minTot||0)/60)>=hmin;
+  const calc=i=>{const ex=Math.max(0,i-meta);const pozo=ex*valor;return {imp:i,ex,pozo,cu:pozo/emp,pctRent:rentTotal>0?pozo/rentTotal*100:0};};
+  const escenarios=[meta,meta+5000,meta+10000,meta+20000,meta+30000].map(calc);
+  return {meta,valor,emp,hmin,horasOk,actual:calc(impresiones),escenarios};
+}
+
 function anaDescriptor(a,rango,peds){
   const desde=(rango[0]||'').slice(0,10),hasta=hoyISO();
   const byDay={};(peds||[]).forEach(p=>{const d=new Date(p.created_at);const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');const q=(p.est_lineas||[]).reduce((s,l)=>s+(l.cantidad||0),0);byDay[k]=(byDay[k]||0)+q;});
@@ -1675,6 +1826,61 @@ function anaDescriptor(a,rango,peds){
       {titulo:'Distribución de pedidos por cantidad',columnas:[{key:'cant',label:'Tramo'},{key:'pedidos',label:'Pedidos',fmt:'num'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'pct',label:'%',fmt:'pct'}],filas:(()=>{const d=distribPedidos(peds),pc=v=>d.total?Math.round(v/d.total*1000)/10:0;return [{cant:'Tramo 200 (hasta 499)',pedidos:d[200],bolsas:d.b200,pct:pc(d[200])},{cant:'Tramo 500 (500 a 999)',pedidos:d[500],bolsas:d.b500,pct:pc(d[500])},{cant:'Tramo 1.000 (1.000 o más)',pedidos:d[1000],bolsas:d.b1000,pct:pc(d[1000])}];})(),totales:{cant:'Total',pedidos:distribPedidos(peds).total,bolsas:distribPedidos(peds).bolsas}},
       {titulo:'Rendimiento por hora',columnas:[{key:'operario',label:'Operario'},{key:'horas',label:'Horas',fmt:'time'},{key:'impr',label:'Impresiones',fmt:'num'},{key:'impH',label:'Imp/h',fmt:'num'},{key:'pts',label:'Puntos',fmt:'num'},{key:'ptH',label:'Puntos/h',fmt:'num'}],filas:((anaExport&&anaExport.rend)||[]).map(x=>({operario:x.operario,horas:x.min,impr:x.impr,impH:x.impH,pts:Math.round(x.pts),ptH:x.ptH}))},
       {titulo:'Tendencia diaria',columnas:[{key:'fecha',label:'Fecha'},{key:'bolsas',label:'Bolsas',fmt:'num'}],filas:tend,grafico:{tipo:'barras',xKey:'fecha',yKey:'bolsas'}}
+      ,...((anaExport&&anaExport.rent&&!anaExport.rent.sinDatos)?(()=>{
+        const R=anaExport.rent,H=anaExport.horas||{},T=R.T,M=n=>money(n),pc=n=>Math.round((n||0)*10)/10;
+        const S=simPremio(T.imp,T.rent,H);
+        const meds=Object.values(R.medida).sort((x,y)=>y.rent-x.rent);
+        const prods=Object.entries(R.prod).map(([k,v])=>({...v,nombre:nomProd(k)})).sort((x,y)=>y.rent-x.rent);
+        const dias=Object.entries(R.dia).sort().map(([f,v])=>({...v,fecha:f}));
+        const peds2=Object.values(R.ped).filter(x=>x.venta>0).sort((x,y)=>y.margen-x.margen);
+        const hist=anaExport.hist||[];
+        const filaMed=v=>({producto:nomProd(v.fam),medida:v.med,bolsas:v.bolsas,unit:M(v.unit),venta:M(v.venta),rent:M(v.rent),margen:pc(v.margen)});
+        const colMed=[{key:'producto',label:'Producto'},{key:'medida',label:'Medida'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'unit',label:'$/u venta'},{key:'venta',label:'Venta'},{key:'rent',label:'Rentabilidad'},{key:'margen',label:'Margen',fmt:'pct'}];
+        const colPed=[{key:'numero',label:'Pedido'},{key:'fecha',label:'Fecha'},{key:'operario',label:'Operario'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'venta',label:'Venta'},{key:'rent',label:'Rentabilidad'},{key:'margen',label:'Margen',fmt:'pct'}];
+        const filaPed=v=>({numero:'#'+v.numero,fecha:v.fecha,operario:v.operario||'—',bolsas:v.bolsas,venta:M(v.venta),rent:M(v.rent),margen:pc(v.margen)});
+        return [
+        {titulo:'RENTABILIDAD — Resumen del período',columnas:[{key:'concepto',label:'Concepto'},{key:'valor',label:'Valor'}],filas:[
+          {concepto:'Venta estimada',valor:M(T.venta)},
+          {concepto:'(−) Costo de bolsas',valor:M(T.bolsa)},
+          {concepto:'(−) Tinta',valor:M(T.tinta)},
+          {concepto:'(−) Mano de obra (horas fichadas)',valor:M(T.mano)},
+          {concepto:'(−) Gastos generales',valor:M(T.gastos)},
+          {concepto:'= RENTABILIDAD',valor:M(T.rent)},
+          {concepto:'Margen',valor:pc(T.margen)+'%'},
+          {concepto:'Bolsas producidas',valor:T.bolsas.toLocaleString('es-AR')},
+          {concepto:'Impresiones',valor:T.imp.toLocaleString('es-AR')},
+          {concepto:'Margen por bolsa',valor:M(T.bolsas?T.rent/T.bolsas:0)},
+          {concepto:'Margen por impresión',valor:M(T.imp?T.rent/T.imp:0)},
+          {concepto:'Horas normales del equipo',valor:ExportService.hm(H.minNorm||0)},
+          {concepto:'Horas extras del equipo',valor:ExportService.hm(H.minExtra||0)},
+          {concepto:'Empleados con horas registradas',valor:String(H.empleados||0)}
+        ]},
+        {titulo:'Rentabilidad por producto',columnas:[{key:'nombre',label:'Producto'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'impresiones',label:'Impresiones',fmt:'num'},{key:'venta',label:'Venta'},{key:'costo',label:'Costo'},{key:'rent',label:'Rentabilidad'},{key:'margen',label:'Margen',fmt:'pct'}],
+          filas:prods.map(v=>({nombre:v.nombre,bolsas:v.bolsas,impresiones:v.imp,venta:M(v.venta),costo:M(v.costo),rent:M(v.rent),margen:pc(v.margen)}))},
+        {titulo:'Rentabilidad por medida (de mayor a menor)',columnas:colMed,filas:meds.map(filaMed)},
+        {titulo:'Rentabilidad por jornada',columnas:[{key:'fecha',label:'Fecha'},{key:'pedidos',label:'Pedidos',fmt:'num'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'impresiones',label:'Impresiones',fmt:'num'},{key:'mano',label:'Mano de obra'},{key:'rent',label:'Rentabilidad'},{key:'margen',label:'Margen',fmt:'pct'}],
+          filas:dias.map(v=>({fecha:v.fecha,pedidos:v.pedidos||0,bolsas:v.bolsas,impresiones:v.imp,mano:M(v.mano),rent:M(v.rent),margen:pc(v.margen)}))},
+        {titulo:'Pedidos MÁS rentables (top 10)',columnas:colPed,filas:peds2.slice(0,10).map(filaPed)},
+        {titulo:'Pedidos MENOS rentables (bottom 10)',columnas:colPed,filas:peds2.slice(-10).reverse().map(filaPed)},
+        {titulo:'Histórico mensual — producción y rendimiento',columnas:[{key:'mes',label:'Mes'},{key:'horas',label:'Horas equipo',fmt:'time'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'impresiones',label:'Impresiones',fmt:'num'},{key:'impH',label:'Impr/hora',fmt:'num'},{key:'rent',label:'Rentabilidad'},{key:'margen',label:'Margen',fmt:'pct'}],
+          filas:hist.map(v=>({mes:v.mes,horas:v.horas,bolsas:v.bolsas,impresiones:v.impresiones,impH:v.impH,rent:M(v.rent),margen:pc(v.margen)}))},
+        {titulo:'Premio por impresiones — situación del período',columnas:[{key:'concepto',label:'Concepto'},{key:'valor',label:'Valor'}],filas:[
+          {concepto:'Meta de impresiones',valor:S.meta.toLocaleString('es-AR')},
+          {concepto:'Valor por impresión excedente',valor:M(S.valor)},
+          {concepto:'Empleados que reparten',valor:String(S.emp)},
+          {concepto:'Impresiones del período',valor:S.actual.imp.toLocaleString('es-AR')},
+          {concepto:'Excedente sobre la meta',valor:S.actual.ex.toLocaleString('es-AR')},
+          {concepto:'POZO',valor:M(S.actual.pozo)},
+          {concepto:'Por empleado',valor:M(S.actual.cu)},
+          {concepto:'% de la rentabilidad que se lleva el pozo',valor:pc(S.actual.pctRent)+'%'},
+          {concepto:'Base mínima de horas',valor:S.hmin?(S.hmin.toLocaleString('es-AR')+' h — '+(S.horasOk?'CUMPLE':'NO CUMPLE')):'sin definir'},
+          {concepto:'Horas extras del período (costo de llegar)',valor:ExportService.hm(H.minExtra||0)}
+        ]},
+        {titulo:'Premio — escenarios',columnas:[{key:'imp',label:'Impresiones',fmt:'num'},{key:'ex',label:'Excedente',fmt:'num'},{key:'pozo',label:'Pozo'},{key:'cu',label:'Por empleado'},{key:'pctRent',label:'% de la rentabilidad',fmt:'pct'}],
+          filas:S.escenarios.map(e=>({imp:e.imp,ex:e.ex,pozo:M(e.pozo),cu:M(e.cu),pctRent:pc(e.pctRent)}))},
+        {titulo:'Datos que faltan cargar (el cálculo es parcial)',columnas:[{key:'falta',label:'Falta'}],
+          filas:R.faltan.length?R.faltan.map(f=>({falta:f})):[{falta:'Nada: todas las medidas del período tienen precio y costo cargados.'}]}
+        ];})():[{titulo:'Rentabilidad',columnas:[{key:'aviso',label:'Aviso'}],filas:[{aviso:'No se pudo calcular la rentabilidad: no hubo respuesta de la cuenta de precios/costos, o no hay pedidos en el período.'}]}])
     ],archivo:'Analitica_'+String(rango[2]||'').replace(/\s+/g,'-')+'_'+hasta};
 }
 function puntDescriptor(d){
@@ -3482,7 +3688,41 @@ function renderRentCostos(){
       Tinta al agua: <b>${cAgua?money(cAgua):'—'}</b> por impresión · Solvente: <b>${cSolv?money(cSolv):'—'}</b> por impresión<br>
       Mano de obra: <b>${mo!=null?money(mo):'—'}</b> por bolsa <span class="admuted">(liquidación ÷ bolsas, 90 días)</span><br>
       Gastos generales: <b>${ga!=null?money(ga):'—'}</b> por bolsa <span class="admuted">(gastos ÷ ${gaBase?gaBase.toLocaleString('es-AR'):'—'} bolsas/mes)</span>
-    </div></div>`;
+    </div></div>
+    <button class="accb copy" id="rentPremioBtn" style="margin-top:8px;font-size:12px">🏆 Parámetros del premio</button>`;
+  const pb=document.getElementById('rentPremioBtn');
+  if(pb)pb.onclick=editarPremio;
+}
+// Parámetros del pozo de premio por impresiones (se guardan en bolsas_config).
+async function editarPremio(){
+  Object.keys(PREMIO_DEF).forEach(k=>{if(cfg[k]==null)cfg[k]=PREMIO_DEF[k];});
+  const campos=[
+    ['premio_meta','Meta de impresiones del mes'],
+    ['premio_valor','$ por cada impresión que supere la meta'],
+    ['premio_empleados','Entre cuántos empleados se reparte'],
+    ['premio_horas_min','Base mínima de horas del equipo (0 = sin mínimo)']
+  ];
+  for(const [k,lbl] of campos){
+    const t=prompt(lbl+':',cfg[k]!=null?cfg[k]:'');
+    if(t===null)return;
+    const v=parseFloat(String(t).replace(',','.'));
+    if(isNaN(v)||v<0){toastMsg('Valor inválido en: '+lbl);return;}
+    cfg[k]=v;
+  }
+  try{
+    for(const [k] of campos){
+      const {error}=await dbStock.from('bolsas_config').upsert({clave:k,valor:cfg[k]},{onConflict:'clave'});
+      if(error)throw error;
+    }
+    const meta=cfg.premio_meta,val=cfg.premio_valor,emp=cfg.premio_empleados||1;
+    toastMsg('✓ Guardado');
+    alert('Premio actualizado.\n\nMeta: '+meta.toLocaleString('es-AR')+' impresiones\n'+
+          'Valor: $'+val.toLocaleString('es-AR')+' por impresión excedente\n'+
+          'Reparto: '+emp+' empleados\n\n'+
+          'Ejemplo: con '+(meta+10000).toLocaleString('es-AR')+' impresiones el pozo sería $'+
+          (10000*val).toLocaleString('es-AR')+' y cada uno cobraría $'+
+          Math.round(10000*val/emp).toLocaleString('es-AR')+'.');
+  }catch(e){console.error('editarPremio',e);toastMsg('⚠ No se pudo guardar');}
 }
 function rtTab(n){
   [1,2,3].forEach(i=>{
