@@ -497,6 +497,7 @@
       <button class="histbtn" id="admBuscarBtn">Buscar / editar pedido 🔎 ›</button>
       <button class="histbtn" id="avBtn">Centro de avisos 📢 ›</button>
       <button class="histbtn" id="rentBtn">Rentabilidad 💰 ›</button>
+      <button class="histbtn" id="tintBtn">Tintas 🎨 ›</button>
       <div class="adcard"><div class="adh">Presentes ahora<small>quién fichó entrada hoy</small></div><div class="adbd"><div id="adPresentes"></div></div></div>
       <div class="adcard"><div class="adh">Horas de hoy<small id="adHorasTag">—</small></div><div class="adbd" id="adHoras"></div></div>
       <div class="adkpis">
@@ -716,6 +717,16 @@
       <div class="adcard"><div class="adh">Multiplicadores por tinta<small>cuánto más valen según el tipo de tinta</small></div><div class="adbd"><div id="cfgTinta"></div></div></div>
       <button class="hero-btn half dark" id="cfgSave" style="width:100%;min-height:52px;font-size:16px">Guardar cambios</button>
       <div id="cfgMsg" style="text-align:center;margin-top:10px;font-weight:700;color:#166534"></div>
+    </div>
+
+    <!-- TINTAS -->
+    <div class="screen" id="scTintas">
+      <div class="adhead"><div><div class="adttl">Tintas</div><div class="adsub">precio · rendimiento · dónde se puede usar</div></div><button class="adexit" id="tintBack">‹ Volver</button></div>
+      <div class="calibbanner">Lo que cargues acá es lo que ven los operarios al elegir el tipo de tinta, y lo que usa el sistema para calcular costo y puntos. Los pedidos ya cargados <b>no se recalculan</b>.</div>
+      <div id="tintList"></div>
+      <button class="addrow" id="tintAdd">+ Agregar tinta</button>
+      <button class="hero-btn half dark" id="tintSave" style="width:100%;min-height:52px;font-size:16px;margin-top:10px">Guardar cambios</button>
+      <div id="tintMsg" style="text-align:center;margin-top:10px;font-weight:700"></div>
     </div>
 
     <!-- ARMAR -->
@@ -1018,7 +1029,33 @@ const FRIS={
 };
 const TINTAS=[['Blanco','#ffffff'],['Negro','#222222'],['Violeta','#6a2c8f'],['Azul Ultramar','#1a1ad6'],['Amarillo Limón','#f5e12a'],['Fucsia','#e5147f'],['Azul Real','#22366e'],['Amarillo Cromo','#f6b400'],['Rosa','#f58fb4'],['Marrón','#4a2e25'],['Naranja','#ef6d15'],['Verde Claro','#3ea63f'],['Gris','#5f6b72'],['Rojo','#e01b22'],['Verde Oscuro','#0e7a4f'],['Bordó','#8e1b1b'],['Celeste','#5fb6e6']];
 const TINTAS_ESP=[['Dorado','#c8963c'],['Plateado','#b9bec2']];
-const TIPO_TINTA=['Al agua','Solvente Eva Flex'];
+const TIPO_TINTA=['Al agua','Solvente Eva Flex'];   // sólo respaldo si la tabla est_tintas no responde
+/* ── Tintas: salen de la tabla est_tintas. Agregar una nueva = cargar una fila. ── */
+let TINTAS_CFG=[];
+async function loadTintas(){
+  if(!db)return;
+  try{
+    const {data,error}=await db.from('est_tintas').select('*').order('orden',{ascending:true});
+    if(error)throw error;
+    TINTAS_CFG=(data||[]).map(t=>({...t,precio:Number(t.precio)||0,rendimiento:Number(t.rendimiento)||0}));
+  }catch(e){console.error('loadTintas',e);TINTAS_CFG=[];}
+}
+function tintaPorNombre(n){return (TINTAS_CFG||[]).find(t=>t.nombre===n)||null;}
+function bolsaEsNegra(c){return /negr/i.test(String(c||''));}
+// Qué tintas se pueden usar según el color de bolsa y el color de tinta elegido.
+function tintasDisponibles(bolsa,tintaColor){
+  const act=(TINTAS_CFG||[]).filter(t=>t.activa!==false);
+  if(!act.length)return [];
+  return act.filter(t=>{
+    if(bolsaEsNegra(bolsa)&&t.admite_negra===false)return false;
+    if(t.colores&&tintaColor){
+      const lista=String(t.colores).split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+      if(lista.length&&lista.indexOf(String(tintaColor).trim().toLowerCase())<0)return false;
+    }
+    return true;
+  });
+}
+function tintaEsAgua(tipo){const t=tintaPorNombre(tipo);return t?!!t.es_agua:/agua/i.test(String(tipo||''));}
 const QTY=[100,200,500,1000];
 
 /* ── estado ── */
@@ -1142,8 +1179,23 @@ function renderOptions(){
     const gt=$('#gTinta');gt.innerHTML='';renderTintas(gt,'tinta');
     // tipo de tinta
     const gtp=$('#gTipo');gtp.innerHTML='';
-    if(P.solvAuto){draft.tipo='Solvente Eva Flex';const b=optBtn('Solvente Eva Flex',true,null,null,'locked');gtp.appendChild(b);const note=document.createElement('div');note.style.cssText='font-size:12px;color:var(--gray);margin-top:8px;grid-column:1/-1';note.textContent='El polietileno va siempre con solvente Eva Flex.';gtp.appendChild(note);}
-    else{TIPO_TINTA.forEach(t=>gtp.appendChild(optBtn(t,draft.tipo===t,()=>{draft.tipo=t;renderOptions();})));}
+    // Tintas disponibles según el color de bolsa y el color de tinta elegido.
+    const disp=tintasDisponibles(draft.bolsa,draft.tinta);
+    if(!disp.length){
+      TIPO_TINTA.forEach(t=>gtp.appendChild(optBtn(t,draft.tipo===t,()=>{draft.tipo=t;renderOptions();})));
+    }else{
+      if(draft.tipo&&!disp.some(t=>t.nombre===draft.tipo))draft.tipo=null;   // la que tenía ya no aplica
+      if(!draft.tipo&&draft.prod==='poli'){                                  // en poli, VV por defecto
+        const vv=disp.find(t=>/^vv$/i.test(t.nombre));if(vv)draft.tipo=vv.nombre;
+      }
+      disp.forEach(t=>gtp.appendChild(optBtn(t.nombre,draft.tipo===t.nombre,()=>{draft.tipo=t.nombre;renderOptions();})));
+      if(bolsaEsNegra(draft.bolsa)&&(TINTAS_CFG||[]).some(t=>t.activa!==false&&t.admite_negra===false)){
+        const note=document.createElement('div');
+        note.style.cssText='font-size:12px;color:var(--gray);margin-top:8px;grid-column:1/-1';
+        note.textContent='En bolsa negra no se muestran las tintas que no cubren sobre oscuro.';
+        gtp.appendChild(note);
+      }
+    }
     // cantidad
     const gq=$('#gQty');gq.innerHTML='';
     QTY.forEach(q=>gq.appendChild(optBtn(q.toLocaleString('es-AR'),draft.qty===q,()=>{draft.qty=q;renderOptions();})));
@@ -1278,7 +1330,7 @@ function rankBarsGrupo(grupos){
 }
 function renderAdmin(){
   const ops={};let bol=0,imp=0,aguaI=0,solvI=0,aguaIF=0,solvIF=0;const bcg={fris:{},poli:{},lam:{},otro:{}},tc={},tb={};
-  sesion.pedidos.forEach(p=>{const pi=impresionesDe(p);imp+=pi;ops[p.operario]=ops[p.operario]||{bol:0,imp:0};ops[p.operario].imp+=pi;p.lineas.forEach(l=>{bol+=l.qty;ops[p.operario].bol+=l.qty;const li=(l.qty||0)*(l.caras||1)*(l.colores||1);if(l.tipo==='Al agua')aguaI+=li;else solvI+=li;if(l.prod==='fris'){if(l.tipo==='Al agua')aguaIF+=li;else solvIF+=li;}if(l.bolsa){const g=grupoBolsa(l.prod);bcg[g][l.bolsa]=(bcg[g][l.bolsa]||0)+l.qty;}if(l.tinta)tc[l.tinta]=(tc[l.tinta]||0)+l.qty;if(l.colores===2&&l.tinta2)tc[l.tinta2]=(tc[l.tinta2]||0)+l.qty;const pn=(PRODUCTOS.find(x=>x.id===l.prod)||{}).name||l.prod;tb[pn]=(tb[pn]||0)+l.qty;});});
+  sesion.pedidos.forEach(p=>{const pi=impresionesDe(p);imp+=pi;ops[p.operario]=ops[p.operario]||{bol:0,imp:0};ops[p.operario].imp+=pi;p.lineas.forEach(l=>{bol+=l.qty;ops[p.operario].bol+=l.qty;const li=(l.qty||0)*(l.caras||1)*(l.colores||1);if(tintaEsAgua(l.tipo))aguaI+=li;else solvI+=li;if(l.prod==='fris'){if(tintaEsAgua(l.tipo))aguaIF+=li;else solvIF+=li;}if(l.bolsa){const g=grupoBolsa(l.prod);bcg[g][l.bolsa]=(bcg[g][l.bolsa]||0)+l.qty;}if(l.tinta)tc[l.tinta]=(tc[l.tinta]||0)+l.qty;if(l.colores===2&&l.tinta2)tc[l.tinta2]=(tc[l.tinta2]||0)+l.qty;const pn=(PRODUCTOS.find(x=>x.id===l.prod)||{}).name||l.prod;tb[pn]=(tb[pn]||0)+l.qty;});});
   $('#adBol').textContent=bol.toLocaleString('es-AR');$('#adImp').textContent=imp.toLocaleString('es-AR');$('#adPed').textContent=sesion.pedidos.length;
   const oe=Object.entries(ops).map(([n,v])=>({n,...v})).sort((a,b)=>b.imp-a.imp);
   const maxI=Math.max(1,...oe.map(o=>o.imp));
@@ -1454,15 +1506,15 @@ function renderAudit(peds){
   cont.innerHTML=`<div class="admuted" style="margin-bottom:10px">Impresiones = bolsas × caras × colores. <b>auto</b> = coincide con el cálculo; <b>manual (viejo)</b> = registro anterior con un valor distinto. Solo lectura, no modifica nada.</div>`+rowsH+totH;
 }
 function analizarPedidos(pedidos){
-  const mat={},med={},colB={},colBg={fris:{},poli:{},lam:{},otro:{}},colT={},comb={},ops={},opsImp={},colAgua={},colSolv={};let bolsas=0,imp=0,aguaI=0,solvI=0,aguaIF=0,solvIF=0,bolsasAgua=0,bolsasSolv=0,frisBolAgua=0,frisBolSolv=0,frisPedAgua=0,frisPedSolv=0;
+  const mat={},med={},colB={},colBg={fris:{},poli:{},lam:{},otro:{}},colT={},comb={},ops={},opsImp={},colAgua={},colSolv={},tintaImp={};let bolsas=0,imp=0,aguaI=0,solvI=0,aguaIF=0,solvIF=0,bolsasAgua=0,bolsasSolv=0,frisBolAgua=0,frisBolSolv=0,frisPedAgua=0,frisPedSolv=0;
   (pedidos||[]).forEach(p=>{imp+=impresionesDe(p);let pFA=false,pFS=false;(p.est_lineas||[]).forEach(l=>{const q=l.cantidad||0;bolsas+=q;
     const P=PRODUCTOS.find(x=>x.id===l.producto);const nm=P?P.name:l.producto;
     mat[nm]=(mat[nm]||0)+q; med[l.medida]=(med[l.medida]||0)+q;
     if(l.color_bolsa){colB[l.color_bolsa]=(colB[l.color_bolsa]||0)+q;const g=grupoBolsa(l.producto);colBg[g][l.color_bolsa]=(colBg[g][l.color_bolsa]||0)+q;}
     if(l.tinta)colT[l.tinta]=(colT[l.tinta]||0)+q;
     if(l.colores===2&&l.tinta2)colT[l.tinta2]=(colT[l.tinta2]||0)+q;
-    const li=q*((l.caras)||1)*((l.colores)||1);if(l.tipo_tinta==='Al agua')aguaI+=li;else if(l.tipo_tinta)solvI+=li;if(l.producto==='fris'){if(l.tipo_tinta==='Al agua')aguaIF+=li;else if(l.tipo_tinta)solvIF+=li;}
-    const esAgua=l.tipo_tinta==='Al agua',esSolv=l.tipo_tinta&&l.tipo_tinta!=='Al agua';
+    const li=q*((l.caras)||1)*((l.colores)||1);if(l.tipo_tinta)tintaImp[l.tipo_tinta]=(tintaImp[l.tipo_tinta]||0)+li;if(tintaEsAgua(l.tipo_tinta))aguaI+=li;else if(l.tipo_tinta)solvI+=li;if(l.producto==='fris'){if(tintaEsAgua(l.tipo_tinta))aguaIF+=li;else if(l.tipo_tinta)solvIF+=li;}
+    const esAgua=tintaEsAgua(l.tipo_tinta),esSolv=l.tipo_tinta&&!esAgua;
     if(esAgua)bolsasAgua+=q;else if(esSolv)bolsasSolv+=q;
     if(l.producto==='fris'){if(esAgua){frisBolAgua+=q;pFA=true;}else if(esSolv){frisBolSolv+=q;pFS=true;}}
     const bucket=esAgua?colAgua:(esSolv?colSolv:null);
@@ -1471,27 +1523,49 @@ function analizarPedidos(pedidos){
     ops[p.operario]=(ops[p.operario]||0)+q;
     opsImp[p.operario]=(opsImp[p.operario]||0)+q*((l.caras)||1)*((l.colores)||1);
   });if(pFA)frisPedAgua++;if(pFS)frisPedSolv++;});
-  return {pedidos:(pedidos||[]).length,bolsas,impresiones:imp,mat,med,colB,colBg,colT,comb,ops,opsImp,aguaI,solvI,aguaIF,solvIF,bolsasAgua,bolsasSolv,colAgua,colSolv,frisBolAgua,frisBolSolv,frisPedAgua,frisPedSolv};
+  return {pedidos:(pedidos||[]).length,bolsas,impresiones:imp,mat,med,colB,colBg,colT,comb,ops,opsImp,aguaI,solvI,aguaIF,solvIF,bolsasAgua,bolsasSolv,colAgua,colSolv,frisBolAgua,frisBolSolv,frisPedAgua,frisPedSolv,tintaImp};
 }
 function distribPedidos(peds){const b={200:0,500:0,1000:0,otros:0,b200:0,b500:0,b1000:0,bolsas:0};(peds||[]).forEach(p=>{const q=(p.est_lineas||[]).reduce((s,l)=>s+(l.cantidad||0),0);if(q<500){b[200]++;b.b200+=q;}else if(q<1000){b[500]++;b.b500+=q;}else{b[1000]++;b.b1000+=q;}b.bolsas+=q;});b.total=(peds||[]).length;return b;}
-function calcEcoTinta(a){const c=CONFIG_TINTA;const cpiAgua=c.agua_rend?c.agua_precio/c.agua_rend:0;const cpiEva=c.eva_rend?c.eva_precio/c.eva_rend:0;const impAgua=a.aguaIF||0;const kgAgua=c.agua_rend?impAgua/c.agua_rend:0;const costoAgua=kgAgua*c.agua_precio;const kgEvaEq=c.eva_rend?impAgua/c.eva_rend:0;const costoEvaEq=kgEvaEq*c.eva_precio;return {cpiAgua,cpiEva,impAgua,kgAgua,costoAgua,kgEvaEq,costoEvaEq,ahorro:costoEvaEq-costoAgua};}
+function calcEcoTinta(a){
+  // Toma la tinta más cara de las usadas como referencia y mide contra ella
+  // el ahorro de cada tinta más barata. Ya no hay "agua vs Eva" fijo:
+  // funciona con las tintas que haya cargadas en est_tintas.
+  const usos=Object.entries(a.tintaImp||{}).filter(([n,i])=>n&&i>0);
+  let refNom='',refCpi=0;
+  usos.forEach(([n])=>{const c=cpiTinta(n);if(c>refCpi){refCpi=c;refNom=n;}});
+  const det=usos.map(([n,imp])=>{
+    const cpi=cpiTinta(n),t=tintaPorNombre(n);
+    return {nombre:n,imp,cpi,costo:cpi*imp,
+      unidad:(t&&t.unidad)||'kg',
+      consumo:(t&&t.rendimiento>0)?imp/t.rendimiento:0,
+      costoRef:refCpi*imp,ahorro:(refCpi-cpi)*imp};
+  }).sort((x,y)=>y.imp-x.imp);
+  const impTot=det.reduce((s,d)=>s+d.imp,0);
+  const costoReal=det.reduce((s,d)=>s+d.costo,0);
+  const costoRef=det.reduce((s,d)=>s+d.costoRef,0);
+  return {det,refNom,refCpi,impTot,costoReal,costoRef,ahorro:costoRef-costoReal};
+}
+
 async function renderAnaExtra(a,r,peds){
   const totBol=(a.frisBolAgua||0)+(a.frisBolSolv||0);const pct=v=>totBol?Math.round((v||0)/totBol*100):0;
   const ft=$('#anaFrisTinta');
   if(ft)ft.innerHTML=`<div class="fri-row"><div class="fri-h">💧 Tinta al agua</div><div class="fri-n"><span><b>${(a.frisBolAgua||0).toLocaleString('es-AR')}</b> bolsas</span><span>${(a.aguaIF||0).toLocaleString('es-AR')} impr.</span><span>${(a.frisPedAgua||0)} ped.</span><span class="fri-pct">${pct(a.frisBolAgua)}%</span></div></div>
     <div class="fri-row"><div class="fri-h">🧪 Eva Flex / solvente</div><div class="fri-n"><span><b>${(a.frisBolSolv||0).toLocaleString('es-AR')}</b> bolsas</span><span>${(a.solvIF||0).toLocaleString('es-AR')} impr.</span><span>${(a.frisPedSolv||0)} ped.</span><span class="fri-pct">${pct(a.frisBolSolv)}%</span></div></div>
     <div class="fri-row tot"><div class="fri-h">Total Friselina</div><div class="fri-n"><span><b>${totBol.toLocaleString('es-AR')}</b> bolsas</span><span>${((a.aguaIF||0)+(a.solvIF||0)).toLocaleString('es-AR')} impr.</span><span>&nbsp;</span><span class="fri-pct">100%</span></div></div>`;
-  const e=calcEcoTinta(a),c=CONFIG_TINTA;
+  const e=calcEcoTinta(a);
   const ec=$('#anaEco');
-  if(ec){ec.innerHTML=`<div class="ecogrid"><div><span>Costo por impresión · agua</span><b>${money(e.cpiAgua)}</b></div><div><span>Costo por impresión · Eva Flex</span><b>${money(e.cpiEva)}</b></div></div>
-    <div class="ecosave"><div class="ecosave-h">💰 Ahorro estimado por usar tinta al agua (Friselina)</div>
-      <div class="eco-l"><span>Impresiones al agua</span><b>${e.impAgua.toLocaleString('es-AR')}</b></div>
-      <div class="eco-l"><span>Consumo estimado</span><b>${e.kgAgua.toLocaleString('es-AR',{maximumFractionDigits:1})} kg</b></div>
-      <div class="eco-l"><span>Costo estimado al agua</span><b>${money(e.costoAgua)}</b></div>
-      <div class="eco-l"><span>Costo equivalente Eva Flex</span><b>${money(e.costoEvaEq)}</b></div>
-      <div class="eco-l tot"><span>Ahorro estimado</span><b>${money(e.ahorro)}</b></div></div>
-    <div class="admuted" style="margin-top:8px;font-size:12px">Estimación basada en los rendimientos promedio configurados (agua ${money(c.agua_precio)}/kg · ${c.agua_rend} imp/kg; Eva Flex ${money(c.eva_precio)}/kg · ${c.eva_rend} imp/kg). No representa la rentabilidad total del trabajo. <button class="miniadd" id="ecoCfgBtn">⚙️ Editar costos</button></div>`;
-    $('#ecoCfgBtn')&&($('#ecoCfgBtn').onclick=abrirEcoCfg);}
+  if(ec){
+    if(!e.det.length){ec.innerHTML='<div class="admuted" style="padding:12px">Todavía no hay impresiones con tinta registrada en este período.</div>';}
+    else{
+      ec.innerHTML=`<div class="ecogrid">${e.det.map(d=>`<div><span>Costo por impresión · ${d.nombre}</span><b>${money2(d.cpi)}</b></div>`).join('')}</div>
+      <div class="ecosave"><div class="ecosave-h">💰 Ahorro estimado de tinta<small style="display:block;font-weight:400">comparado con hacer todo con ${e.refNom||'la tinta más cara'}</small></div>
+        ${e.det.map(d=>`<div class="eco-l"><span>${d.nombre} · ${d.imp.toLocaleString('es-AR')} impr. (${d.consumo.toLocaleString('es-AR',{maximumFractionDigits:1})} ${d.unidad})</span><b>${money(d.costo)}</b></div>`).join('')}
+        <div class="eco-l"><span>Costo real de tinta</span><b>${money(e.costoReal)}</b></div>
+        <div class="eco-l"><span>Costo si todo fuera ${e.refNom||'—'}</span><b>${money(e.costoRef)}</b></div>
+        <div class="eco-l tot"><span>Ahorro estimado</span><b>${money(e.ahorro)}</b></div></div>
+      <div class="admuted" style="margin-top:8px;font-size:12px">Calculado con los precios y rendimientos cargados en <b>Tintas</b>. No representa la rentabilidad total del trabajo. <button class="miniadd" id="ecoCfgBtn">🎨 Editar tintas</button></div>`;
+    }
+    $('#ecoCfgBtn')&&($('#ecoCfgBtn').onclick=abrirTintas);}
   const d=distribPedidos(peds),dp=v=>d.total?Math.round(v/d.total*100):0;
   const drow=(lbl,v,bol)=>`<div class="hday"><span>${lbl}</span><span class="hdayr"><span class="num">${v} ped.</span> <span class="num">${(bol||0).toLocaleString('es-AR')} bolsas</span> <b>${dp(v)}%</b></span></div>`;
   const dd=$('#anaDistrib');
@@ -1689,12 +1763,27 @@ async function cargarDatosRent(force){
     (v.data||[]).forEach(r=>{const key=r.familia+'|'+r.medida;(ventaMap[key]=ventaMap[key]||[]).push({desde:r.desde,total:Number(r.precio_total)});});
     Object.values(ventaMap).forEach(x=>x.sort((p,q)=>p.desde-q.desde));
     (c.data||[]).forEach(r=>{costoMap[r.familia+'|'+r.medida+'|'+(r.color||'')]={costo:r.costo};});
-    (k.data||[]).forEach(r=>{cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
+    const DERIVADAS=['mano_obra_bolsa','gastos_grales_bolsa'];   // se calculan, no se leen
+    (k.data||[]).forEach(r=>{if(DERIVADAS.indexOf(r.clave)>=0)return;cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
     Object.keys(PREMIO_DEF).forEach(k2=>{if(cfg[k2]==null)cfg[k2]=PREMIO_DEF[k2];});
+    await recalcCostosVivos();
     RENT_OK=true;return true;
   }catch(e){console.error('cargarDatosRent',e);return false;}
 }
 
+// Mano de obra y gastos por bolsa SIEMPRE se calculan en vivo.
+// Nunca se leen de bolsas_config: ahí quedaron valores viejos en 0 que pisaban el cálculo.
+async function recalcCostosVivos(gastosPre){
+  try{
+    if(gastosPre)gastos=gastosPre;
+    else{const g=await dbStock.from('bolsas_gastos').select('*');if(!g.error)gastos=g.data||[];}
+  }catch(e){console.error('gastos',e);}
+  await gaComputePeriodo();
+  gaBase=cfg.bolsas_mes||(gaCalc?gaCalc.bolsasMes:null)||null;
+  const totMes=(gastos||[]).reduce((sum,x)=>sum+gaMensual(x),0);
+  cfg.gastos_grales_bolsa=(gaBase&&gaBase>0)?totMes/gaBase:null;
+  cfg.mano_obra_bolsa=gaCalc?gaCalc.manoBolsa:null;
+}
 function nomProd(id){const p=PRODUCTOS.find(x=>x.id===id);return p?p.name:id;}
 
 // Horas del equipo en el rango: pago por jornada (mano de obra real) y totales.
@@ -1824,7 +1913,13 @@ function anaDescriptor(a,rango,peds){
       {titulo:'Impresiones por tinta',columnas:[{key:'ambito',label:'Ámbito'},{key:'agua',label:'Al agua',fmt:'num'},{key:'solvente',label:'Solvente',fmt:'num'}],filas:[{ambito:'Todo el taller',agua:a.aguaI,solvente:a.solvI},{ambito:'Solo friselina',agua:a.aguaIF,solvente:a.solvIF}]},
       {titulo:'Combinaciones',columnas:[{key:'nombre',label:'Combinación'},{key:'cantidad',label:'Cantidad',fmt:'num'}],filas:Object.entries(a.comb).sort((x,y)=>y[1]-x[1]).slice(0,25).map(([k,v])=>({nombre:k,cantidad:v}))},
       {titulo:'Friselina por tipo de tinta',columnas:[{key:'tinta',label:'Tipo de tinta'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'impresiones',label:'Impresiones',fmt:'num'},{key:'pedidos',label:'Pedidos',fmt:'num'},{key:'pct',label:'% Friselina',fmt:'pct'}],filas:(()=>{const tb=(a.frisBolAgua||0)+(a.frisBolSolv||0);const pc=v=>tb?Math.round(v/tb*1000)/10:0;return [{tinta:'Tinta al agua',bolsas:a.frisBolAgua||0,impresiones:a.aguaIF||0,pedidos:a.frisPedAgua||0,pct:pc(a.frisBolAgua||0)},{tinta:'Eva Flex / solvente',bolsas:a.frisBolSolv||0,impresiones:a.solvIF||0,pedidos:a.frisPedSolv||0,pct:pc(a.frisBolSolv||0)}];})()},
-      {titulo:'Impacto económico — tintas',columnas:[{key:'concepto',label:'Concepto'},{key:'valor',label:'Valor'}],filas:(()=>{const e=calcEcoTinta(a),c=CONFIG_TINTA;return [{concepto:'Costo por impresión · agua',valor:money(e.cpiAgua)},{concepto:'Costo por impresión · Eva Flex',valor:money(e.cpiEva)},{concepto:'Impresiones Friselina al agua',valor:(e.impAgua).toLocaleString('es-AR')},{concepto:'Consumo estimado (kg)',valor:e.kgAgua.toLocaleString('es-AR',{maximumFractionDigits:2})},{concepto:'Costo estimado al agua',valor:money(e.costoAgua)},{concepto:'Costo equivalente Eva Flex',valor:money(e.costoEvaEq)},{concepto:'Ahorro estimado de tinta',valor:money(e.ahorro)},{concepto:'Valores usados',valor:'agua '+money(c.agua_precio)+'/kg · '+c.agua_rend+' imp/kg; Eva '+money(c.eva_precio)+'/kg · '+c.eva_rend+' imp/kg'}];})()},
+      {titulo:'Impacto económico — tintas',columnas:[{key:'concepto',label:'Concepto'},{key:'valor',label:'Valor'}],filas:(()=>{const e=calcEcoTinta(a);const f=[];
+        e.det.forEach(d=>{f.push({concepto:'Costo por impresión · '+d.nombre,valor:money2(d.cpi)});});
+        e.det.forEach(d=>{f.push({concepto:'Impresiones · '+d.nombre,valor:d.imp.toLocaleString('es-AR')+' ('+d.consumo.toLocaleString('es-AR',{maximumFractionDigits:2})+' '+d.unidad+')'});});
+        f.push({concepto:'Costo real de tinta',valor:money(e.costoReal)});
+        f.push({concepto:'Costo si todo fuera '+(e.refNom||'—'),valor:money(e.costoRef)});
+        f.push({concepto:'Ahorro estimado de tinta',valor:money(e.ahorro)});
+        return f;})()},
       {titulo:'Distribución de pedidos por cantidad',columnas:[{key:'cant',label:'Tramo'},{key:'pedidos',label:'Pedidos',fmt:'num'},{key:'bolsas',label:'Bolsas',fmt:'num'},{key:'pct',label:'%',fmt:'pct'}],filas:(()=>{const d=distribPedidos(peds),pc=v=>d.total?Math.round(v/d.total*1000)/10:0;return [{cant:'Tramo 200 (hasta 499)',pedidos:d[200],bolsas:d.b200,pct:pc(d[200])},{cant:'Tramo 500 (500 a 999)',pedidos:d[500],bolsas:d.b500,pct:pc(d[500])},{cant:'Tramo 1.000 (1.000 o más)',pedidos:d[1000],bolsas:d.b1000,pct:pc(d[1000])}];})(),totales:{cant:'Total',pedidos:distribPedidos(peds).total,bolsas:distribPedidos(peds).bolsas}},
       {titulo:'Rendimiento por hora',columnas:[{key:'operario',label:'Operario'},{key:'horas',label:'Horas',fmt:'time'},{key:'impr',label:'Impresiones',fmt:'num'},{key:'impH',label:'Imp/h',fmt:'num'},{key:'pts',label:'Puntos',fmt:'num'},{key:'ptH',label:'Puntos/h',fmt:'num'}],filas:((anaExport&&anaExport.rend)||[]).map(x=>({operario:x.operario,horas:x.min,impr:x.impr,impH:x.impH,pts:Math.round(x.pts),ptH:x.ptH}))},
       {titulo:'Tendencia diaria',columnas:[{key:'fecha',label:'Fecha'},{key:'bolsas',label:'Bolsas',fmt:'num'}],filas:tend,grafico:{tipo:'barras',xKey:'fecha',yKey:'bolsas'}}
@@ -2235,6 +2330,109 @@ async function renderOrdenes(){
 let cfgBaseRows=[],cfgMultRows=[];
 $('#cfgBtn').onclick=async()=>{await cargarCfg();show('scPuntosCfg');};
 $('#cfgBack').onclick=()=>show('scAdmin',false);
+
+/* ══════════════════════════════════════════════════════════════
+   EDITOR DE TINTAS (est_tintas)
+   Agregar una tinta nueva es cargar una fila acá: no hay que
+   tocar el HTML ni volver a subir el archivo al repo.
+   ══════════════════════════════════════════════════════════════ */
+let tintRows=[], tintDel=[];
+function tintCpi(r){const rend=Number(r.rendimiento)||0;return rend>0?(Number(r.precio)||0)/rend:0;}
+function money2(n){return '$'+(Math.round(n*100)/100).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function renderTintas(){
+  const cont=$('#tintList');if(!cont)return;
+  if(!tintRows.length){cont.innerHTML='<div class="admuted" style="padding:12px">No hay tintas cargadas. Si la tabla est_tintas no existe todavía, hay que correr el SQL en Supabase (cuenta del PRODE).</div>';return;}
+  cont.innerHTML=tintRows.map((r,i)=>`
+    <div class="adcard">
+      <div class="adh"><input class="cfgi tnf" data-i="${i}" data-f="nombre" value="${(r.nombre||'').replace(/"/g,'&quot;')}" placeholder="Nombre (ej: VV)" style="font-weight:800;width:100%"></div>
+      <div class="adbd">
+        <div class="cfgrow"><span style="flex:1;font-size:13px;font-weight:700">Precio de compra</span>
+          <input class="cfgi num tnf" data-i="${i}" data-f="precio" type="number" step="1" value="${r.precio??''}" style="max-width:110px">
+          <select class="cfgi tnf" data-i="${i}" data-f="unidad" style="max-width:100px"><option value="kg">por kg</option><option value="litro">por litro</option></select></div>
+        <div class="cfgrow"><span style="flex:1;font-size:13px;font-weight:700">Rendimiento<small style="display:block;font-weight:400;color:var(--gray)">impresiones por ${r.unidad==='litro'?'litro':'kg'}</small></span>
+          <input class="cfgi num tnf" data-i="${i}" data-f="rendimiento" type="number" step="1" value="${r.rendimiento??''}" style="max-width:110px"></div>
+        <div class="cfgrow" style="background:#f8fafc"><span style="flex:1;font-size:13px;font-weight:700">Costo por impresión</span>
+          <span style="font-weight:800">${money2(tintCpi(r))}</span></div>
+        <div class="cfgrow"><span style="flex:1;font-size:13px;font-weight:700">Puntos</span>
+          <input class="cfgi num tnf" data-i="${i}" data-f="pct" type="number" step="1" value="${Math.round(((Number(r.mult_puntos)||1)-1)*1000)/10}" style="max-width:90px">
+          <span style="font-size:13px;font-weight:700">% más</span></div>
+        <label class="cfgrow" style="cursor:pointer"><input type="checkbox" class="tnc" data-i="${i}" data-f="es_agua" ${r.es_agua?'checked':''} style="width:20px;height:20px"><span style="flex:1;font-size:13px;font-weight:700;margin-left:10px">Es tinta al agua</span></label>
+        <label class="cfgrow" style="cursor:pointer"><input type="checkbox" class="tnc" data-i="${i}" data-f="admite_negra" ${r.admite_negra!==false?'checked':''} style="width:20px;height:20px"><span style="flex:1;font-size:13px;font-weight:700;margin-left:10px">Se puede usar en bolsa negra</span></label>
+        <label class="cfgrow" style="cursor:pointer"><input type="checkbox" class="tnc" data-i="${i}" data-f="activa" ${r.activa!==false?'checked':''} style="width:20px;height:20px"><span style="flex:1;font-size:13px;font-weight:700;margin-left:10px">Activa (aparece al cargar pedidos)</span></label>
+        <button class="cfgdel tndel" data-i="${i}" style="width:100%;margin-top:8px">✕ Borrar esta tinta</button>
+      </div>
+    </div>`).join('');
+  tintRows.forEach((r,i)=>{const u=cont.querySelector('select[data-f="unidad"][data-i="'+i+'"]');if(u)u.value=r.unidad||'kg';});
+  cont.querySelectorAll('.tnf').forEach(el=>el.onchange=()=>{
+    const i=+el.dataset.i,f=el.dataset.f;
+    if(f==='pct'){const v=parseFloat(el.value);tintRows[i].mult_puntos=isNaN(v)?1:1+v/100;}
+    else if(f==='precio'||f==='rendimiento')tintRows[i][f]=parseFloat(el.value)||0;
+    else tintRows[i][f]=el.value;
+    renderTintas();
+  });
+  cont.querySelectorAll('.tnc').forEach(el=>el.onchange=()=>{tintRows[+el.dataset.i][el.dataset.f]=el.checked;});
+  cont.querySelectorAll('.tndel').forEach(b=>b.onclick=()=>{
+    const i=+b.dataset.i,r=tintRows[i];
+    if(!confirm('¿Borrar la tinta "'+(r.nombre||'sin nombre')+'"? Los pedidos ya cargados con esta tinta siguen calculando con el valor de respaldo.'))return;
+    if(r.id)tintDel.push(r.id);
+    tintRows.splice(i,1);renderTintas();
+  });
+}
+async function abrirTintas(){
+  show('scTintas');
+  $('#tintMsg').textContent='';
+  $('#tintList').innerHTML='<div class="admuted" style="padding:12px">Cargando…</div>';
+  await loadTintas();
+  tintRows=(TINTAS_CFG||[]).map(t=>({...t}));tintDel=[];
+  renderTintas();
+}
+$('#tintBtn').onclick=abrirTintas;
+$('#tintBack').onclick=()=>show('scAdmin',false);
+$('#tintAdd').onclick=()=>{
+  const max=tintRows.reduce((m,r)=>Math.max(m,Number(r.orden)||0),0);
+  tintRows.push({nombre:'',precio:0,unidad:'kg',rendimiento:1000,mult_puntos:1,es_agua:true,admite_negra:true,activa:true,orden:max+10});
+  renderTintas();
+};
+$('#tintSave').onclick=async()=>{
+  const msg=$('#tintMsg');
+  if(!db){msg.style.color='#b91c1c';msg.textContent='Sin conexión';return;}
+  const val=tintRows.filter(r=>String(r.nombre||'').trim());
+  const nombres=val.map(r=>String(r.nombre).trim().toLowerCase());
+  if(nombres.some((n,i)=>nombres.indexOf(n)!==i)){msg.style.color='#b91c1c';msg.textContent='Hay dos tintas con el mismo nombre';return;}
+  const malas=val.filter(r=>!(Number(r.rendimiento)>0));
+  if(malas.length){msg.style.color='#b91c1c';msg.textContent='El rendimiento tiene que ser mayor que 0 en: '+malas.map(r=>r.nombre).join(', ');return;}
+  if(!val.length&&!confirm('No queda ninguna tinta cargada. Los operarios no van a poder elegir tipo de tinta. ¿Guardar igual?'))return;
+  msg.style.color='#64748b';msg.textContent='Guardando…';
+  try{
+    for(const id of tintDel){const {error}=await db.from('est_tintas').delete().eq('id',id);if(error)throw error;}
+    const payload=val.map((r,i)=>({
+      ...(r.id?{id:r.id}:{}),
+      nombre:String(r.nombre).trim(),
+      precio:Number(r.precio)||0,
+      unidad:r.unidad||'kg',
+      rendimiento:Number(r.rendimiento)||1,
+      mult_puntos:Number(r.mult_puntos)||1,
+      mult_puntos_blanca:(r.mult_puntos_blanca==null||r.mult_puntos_blanca==='')?null:Number(r.mult_puntos_blanca),
+      es_agua:!!r.es_agua,
+      admite_negra:r.admite_negra!==false,
+      colores:r.colores||null,
+      activa:r.activa!==false,
+      orden:Number(r.orden)||((i+1)*10),
+      updated_at:new Date().toISOString()
+    }));
+    if(payload.length){const {error}=await db.from('est_tintas').upsert(payload,{onConflict:'nombre'});if(error)throw error;}
+    try{await dbInsert('auditoria',{id:uuid(),entidad:'config',entidad_id:'tintas',accion:'editar',detalle:{tintas:payload.map(t=>({nombre:t.nombre,precio:t.precio,rendimiento:t.rendimiento,activa:t.activa}))},usuario:adminWho||'admin'});}catch(e){}
+    tintDel=[];
+    await loadTintas();
+    tintRows=(TINTAS_CFG||[]).map(t=>({...t}));
+    renderTintas();
+    msg.style.color='#166534';msg.textContent='✓ Tintas guardadas';
+  }catch(e){
+    console.error('tintSave',e);
+    msg.style.color='#b91c1c';
+    msg.textContent='No se pudo guardar: '+(e.message||e.hint||'error')+(/est_tintas/.test(String(e.message||''))?' — ¿corriste el SQL en Supabase?':'');
+  }
+};
 async function cargarCfg(){
   cfgBaseRows=[];cfgMultRows=[];$('#cfgMsg').textContent='';
   if(db){try{const {data:b}=await db.from('est_puntos').select('*');cfgBaseRows=(b||[]).map(r=>({material:r.material,medida:r.medida,puntos:Number(r.puntos)}));const {data:m}=await db.from('est_puntos_mult').select('*').order('cantidad',{ascending:true});cfgMultRows=(m||[]).map(r=>({cantidad:Number(r.cantidad),mult:Number(r.mult)}));}catch(e){console.error(e);}}
@@ -2333,7 +2531,15 @@ function multCantidad(q){
   for(let i=0;i<A.length-1;i++){if(q<=A[i+1][0]){const x0=A[i][0],y0=A[i][1],x1=A[i+1][0],y1=A[i+1][1];return y0+(y1-y0)*(q-x0)/(x1-x0);}}
   const n=A.length,x0=A[n-2][0],y0=A[n-2][1],x1=A[n-1][0],y1=A[n-1][1],slope=(y1-y0)/(x1-x0);return y1+slope*(q-x1);
 }
-function multTinta(l){if(!l)return 1;const agua=(l.tipo_tinta==='Al agua'||l.tipo==='Al agua');if(!agua)return CONFIG_PUNTOS_MULT.eva;const blanca=((l.colores||1)===1)&&(l.tinta==='Blanco');return blanca?CONFIG_PUNTOS_MULT.agua_blanca:CONFIG_PUNTOS_MULT.agua;}
+function multTinta(l){
+  if(!l)return 1;
+  const tipo=l.tipo_tinta||l.tipo||'';
+  const blanca=((l.colores||1)===1)&&(l.tinta==='Blanco');
+  const t=tintaPorNombre(tipo);
+  if(t)return Number((blanca&&t.mult_puntos_blanca!=null)?t.mult_puntos_blanca:(t.mult_puntos!=null?t.mult_puntos:1));
+  if(tipo!=='Al agua')return CONFIG_PUNTOS_MULT.eva;   // respaldo
+  return blanca?CONFIG_PUNTOS_MULT.agua_blanca:CONFIG_PUNTOS_MULT.agua;
+}
 function ptBaseMedida(prod,medida){
   const T=PUNTOS_TABLA||{};
   let m=String(medida||'').trim();
@@ -2998,7 +3204,13 @@ function setCoMode(m){
   else if(m==='per'){$('#perCustom').style.display='none';['perHoy','perSem','perMes','perRangoBtn'].forEach(id=>$('#'+id).classList.remove('sel'));}
   else{$('#coPedVal').textContent='Tocá para buscar';$('#coPedBtn').className='pedidoField empty';}
 }
-function cpiTinta(tipo){const c=CONFIG_TINTA||{};const agua=c.agua_rend?c.agua_precio/c.agua_rend:0;const eva=c.eva_rend?c.eva_precio/c.eva_rend:0;return (tipo&&/agua/i.test(tipo))?agua:eva;}
+function cpiTinta(tipo){
+  const t=tintaPorNombre(tipo);
+  if(t&&t.rendimiento>0)return t.precio/t.rendimiento;
+  const c=CONFIG_TINTA||{};   // respaldo: pedidos viejos con tintas que ya no están en la tabla
+  const agua=c.agua_rend?c.agua_precio/c.agua_rend:0,eva=c.eva_rend?c.eva_precio/c.eva_rend:0;
+  return (tipo&&/agua/i.test(tipo))?agua:eva;
+}
 async function coCargarPedidoRent(n){
   $('#coPedVal').textContent='#'+n;$('#coPedBtn').className='pedidoField set';
   $('#coResult').innerHTML='<div class="admuted" style="padding:12px">Buscando pedido…</div>';
@@ -3056,7 +3268,11 @@ function renderCotiz(){
   $('#coSecQty').style.display=ready?'block':'none';
   if(ready){const gq=$('#coQty');gq.innerHTML='';[200,500,1000].forEach(q=>gq.appendChild(optBtn(q.toLocaleString('es-AR'),co.qty===q,()=>{co.qty=q;renderCotiz();calcCotiz();})));gq.appendChild(optBtn(co.qty&&![200,500,1000].includes(co.qty)?('Otra: '+co.qty):'Otra…',co.qty&&![200,500,1000].includes(co.qty),()=>openPad('Cantidad',co.qty||'',n=>{if(n>0){co.qty=n;renderCotiz();calcCotiz();}}),null,'otros'));}
   $('#coSecTinta').style.display=(ready&&co.qty)?'block':'none';
-  if(ready&&co.qty){const gt=$('#coTinta');gt.innerHTML='';['Al agua','Eva Flex (solvente)'].forEach(t=>gt.appendChild(optBtn(t,co.tipoTinta===t,()=>{co.tipoTinta=t;renderCotiz();calcCotiz();})));}
+  if(ready&&co.qty){const gt=$('#coTinta');gt.innerHTML='';
+    const lst=(TINTAS_CFG||[]).filter(t=>t.activa!==false).map(t=>t.nombre);
+    const nombres=lst.length?lst:['Al agua','Solvente Eva Flex'];
+    if(nombres.indexOf(co.tipoTinta)<0)co.tipoTinta=nombres[0];
+    nombres.forEach(t=>gt.appendChild(optBtn(t+' · '+money2(cpiTinta(t))+'/impr.',co.tipoTinta===t,()=>{co.tipoTinta=t;renderCotiz();calcCotiz();})));}
   $('#coSecCol').style.display=(ready&&co.qty)?'block':'none';
   if(ready&&co.qty){const gc=$('#coCol');gc.innerHTML='';
     [1,2].forEach(n=>gc.appendChild(optBtn(n+(n===1?' color':' colores'),co.colores===n,()=>{co.colores=n;renderCotiz();calcCotiz();})));
@@ -3649,7 +3865,7 @@ async function initPortal(token){
 
 const PORTAL_TOKEN=new URLSearchParams(location.search).get('emp');
 if(PORTAL_TOKEN){document.body.classList.add('portalmode');initPortal(PORTAL_TOKEN);}
-else{refreshHome();scStack.push('scHome');loadEmpleados().then(loadData);loadPuntos();loadAvisos();loadConfigLiq();}
+else{refreshHome();scStack.push('scHome');loadEmpleados().then(loadData);loadPuntos();loadAvisos();loadConfigLiq();loadTintas();}
 idbOpen().then(()=>{pingSupabase();actualizarIndicador();setInterval(()=>{pingSupabase();if(enLinea)Offline.sincronizarPendientes();},20000);}).catch(()=>{});
 
 /* ── HUB Rentabilidad: carga todo y calcula costos en vivo ── */
@@ -3671,23 +3887,21 @@ async function abrirRent(){
     (c.data||[]).forEach(r=>{costoMap[r.familia+'|'+r.medida+'|'+(r.color||'')]={costo:r.costo};precios[pkey(r.familia,r.medida,r.color)]={costo:r.costo};});
     (k.data||[]).forEach(r=>{cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
     gastos=g.data||[];
-    await gaComputePeriodo();
-    gaBase=cfg.bolsas_mes||(gaCalc?gaCalc.bolsasMes:null)||null;
-    // costos vivos -> cfg (sin botones de aplicar)
-    const totMes=gastos.reduce((sum,x)=>sum+gaMensual(x),0);
-    cfg.gastos_grales_bolsa=(gaBase&&gaBase>0)?totMes/gaBase:null;
-    cfg.mano_obra_bolsa=gaCalc?gaCalc.manoBolsa:null;
+    await recalcCostosVivos(g.data||[]);
     rentReady=true;
     renderRentCostos();rtTab(1);
   }catch(e){console.error('rent',e);$('#rentCostos').innerHTML='<div class="admuted" style="padding:12px">Error al cargar. Verificá que existan las tablas bolsas_venta, bolsas_precios, bolsas_config y bolsas_gastos.</div>';}
 }
 function renderRentCostos(){
   const money=x=>'$'+(Math.round(x*100)/100).toLocaleString('es-AR');
-  const cAgua=cpiTinta('Al agua'),cSolv=cpiTinta('Eva Flex');
+  const lstT=(TINTAS_CFG||[]).filter(t=>t.activa!==false);
+  const lineaT=lstT.length
+    ? lstT.map(t=>t.nombre+': <b>'+money2(cpiTinta(t.nombre))+'</b> por impresión').join(' · ')
+    : 'Tinta al agua: <b>'+money2(cpiTinta('Al agua'))+'</b> · Solvente: <b>'+money2(cpiTinta('Solvente Eva Flex'))+'</b> por impresión';
   const mo=cfg.mano_obra_bolsa,ga=cfg.gastos_grales_bolsa;
   $('#rentCostos').innerHTML=`<div class="bcard"><div class="bch"><span><b>Costos actuales del sistema</b></span><span>calculado en vivo</span></div>
     <div style="padding:8px 2px;font-size:13px;line-height:1.75">
-      Tinta al agua: <b>${cAgua?money(cAgua):'—'}</b> por impresión · Solvente: <b>${cSolv?money(cSolv):'—'}</b> por impresión<br>
+      ${lineaT}<br>
       Mano de obra: <b>${mo!=null?money(mo):'—'}</b> por bolsa <span class="admuted">(liquidación ÷ bolsas, 90 días)</span><br>
       Gastos generales: <b>${ga!=null?money(ga):'—'}</b> por bolsa <span class="admuted">(gastos ÷ ${gaBase?gaBase.toLocaleString('es-AR'):'—'} bolsas/mes)</span>
     </div></div>
