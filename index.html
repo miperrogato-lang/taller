@@ -2339,7 +2339,7 @@ $('#cfgBack').onclick=()=>show('scAdmin',false);
 let tintRows=[], tintDel=[];
 function tintCpi(r){const rend=Number(r.rendimiento)||0;return rend>0?(Number(r.precio)||0)/rend:0;}
 function money2(n){return '$'+(Math.round(n*100)/100).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2});}
-function renderTintas(){
+function renderTintasCfg(){
   const cont=$('#tintList');if(!cont)return;
   if(!tintRows.length){cont.innerHTML='<div class="admuted" style="padding:12px">No hay tintas cargadas. Si la tabla est_tintas no existe todavía, hay que correr el SQL en Supabase (cuenta del PRODE).</div>';return;}
   cont.innerHTML=tintRows.map((r,i)=>`
@@ -2368,14 +2368,14 @@ function renderTintas(){
     if(f==='pct'){const v=parseFloat(el.value);tintRows[i].mult_puntos=isNaN(v)?1:1+v/100;}
     else if(f==='precio'||f==='rendimiento')tintRows[i][f]=parseFloat(el.value)||0;
     else tintRows[i][f]=el.value;
-    renderTintas();
+    renderTintasCfg();
   });
   cont.querySelectorAll('.tnc').forEach(el=>el.onchange=()=>{tintRows[+el.dataset.i][el.dataset.f]=el.checked;});
   cont.querySelectorAll('.tndel').forEach(b=>b.onclick=()=>{
     const i=+b.dataset.i,r=tintRows[i];
     if(!confirm('¿Borrar la tinta "'+(r.nombre||'sin nombre')+'"? Los pedidos ya cargados con esta tinta siguen calculando con el valor de respaldo.'))return;
     if(r.id)tintDel.push(r.id);
-    tintRows.splice(i,1);renderTintas();
+    tintRows.splice(i,1);renderTintasCfg();
   });
 }
 async function abrirTintas(){
@@ -2384,14 +2384,14 @@ async function abrirTintas(){
   $('#tintList').innerHTML='<div class="admuted" style="padding:12px">Cargando…</div>';
   await loadTintas();
   tintRows=(TINTAS_CFG||[]).map(t=>({...t}));tintDel=[];
-  renderTintas();
+  renderTintasCfg();
 }
 $('#tintBtn').onclick=abrirTintas;
 $('#tintBack').onclick=()=>show('scAdmin',false);
 $('#tintAdd').onclick=()=>{
   const max=tintRows.reduce((m,r)=>Math.max(m,Number(r.orden)||0),0);
   tintRows.push({nombre:'',precio:0,unidad:'kg',rendimiento:1000,mult_puntos:1,es_agua:true,admite_negra:true,activa:true,orden:max+10});
-  renderTintas();
+  renderTintasCfg();
 };
 $('#tintSave').onclick=async()=>{
   const msg=$('#tintMsg');
@@ -2425,7 +2425,7 @@ $('#tintSave').onclick=async()=>{
     tintDel=[];
     await loadTintas();
     tintRows=(TINTAS_CFG||[]).map(t=>({...t}));
-    renderTintas();
+    renderTintasCfg();
     msg.style.color='#166534';msg.textContent='✓ Tintas guardadas';
   }catch(e){
     console.error('tintSave',e);
