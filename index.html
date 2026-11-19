@@ -590,7 +590,16 @@
         <button data-p="semana">Semana</button>
         <button data-p="mes" class="on">Mes</button>
         <button data-p="todo">Todo</button>
+        <button data-p="rango">Rango…</button>
       </div>
+      <div id="anaCustom" style="display:none;margin-bottom:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label style="font-size:12px;font-weight:700;display:block">Desde<input type="date" id="anaDesde" style="width:100%;padding:10px;border:2px solid #ddd;border-radius:9px;font-family:inherit;font-size:14px;margin-top:4px"></label>
+          <label style="font-size:12px;font-weight:700;display:block">Hasta<input type="date" id="anaHasta" style="width:100%;padding:10px;border:2px solid #ddd;border-radius:9px;font-family:inherit;font-size:14px;margin-top:4px"></label>
+        </div>
+        <button class="hero-btn half dark" id="anaRangoGo" style="width:100%;margin-top:8px;min-height:44px;font-size:14px">Ver este rango</button>
+      </div>
+      <div id="anaHist"></div>
       <div class="expbar"><button class="expbtn pdf" id="anaPdf">📄 PDF</button><button class="expbtn" id="anaXls">📊 Excel</button></div>
       <div class="adkpis">
         <div class="adkpi"><div class="v num" id="anaBol">0</div><div class="k">Bolsas</div></div>
@@ -1602,20 +1611,133 @@ function tendenciaSVG(pedidos){
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><line x1="4" y1="${H-16}" x2="${W-4}" y2="${H-16}" stroke="#E4E4E4"/>${bars}<text x="4" y="${H-3}" font-size="9" fill="#8C8C8C">${days[0].slice(5)}</text><text x="${W-4}" y="${H-3}" font-size="9" fill="#8C8C8C" text-anchor="end">${days[days.length-1].slice(5)}</text></svg>`;
 }
 async function reporteAnual(y){return analizarPedidos(await fetchPedidosRango(new Date(y,0,1).toISOString(),new Date(y+1,0,1).toISOString()));}
-let anaPeriodo='mes';
+let anaPeriodo='mes', anaD0=null, anaD1=null;   // anaD0/anaD1: rango elegido a mano
 $('#anaBtn').onclick=()=>{show('scAnalitica');renderAnalitica();};
 $('#anaBack').onclick=()=>show('scAdmin',false);
-$('#anaTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...$('#anaTabs').children].forEach(x=>x.classList.toggle('on',x===b));anaPeriodo=b.dataset.p;renderAnalitica();});
-function anaRango(){const now=new Date();if(anaPeriodo==='semana'){const off=(now.getDay()+6)%7;return[new Date(now.getFullYear(),now.getMonth(),now.getDate()-off).toISOString(),null,'Esta semana'];}if(anaPeriodo==='mes'){return[new Date(now.getFullYear(),now.getMonth(),1).toISOString(),null,H_MES[now.getMonth()]+' '+now.getFullYear()];}return['2000-01-01T00:00:00.000Z',null,'Todo el historial'];}
+$('#anaTabs').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  [...$('#anaTabs').children].forEach(x=>x.classList.toggle('on',x===b));
+  anaPeriodo=b.dataset.p;
+  $('#anaCustom').style.display=(anaPeriodo==='rango')?'block':'none';
+  if(anaPeriodo==='rango'){
+    // arranca con el mes pasado completo, que es lo que más se consulta
+    if(!$('#anaDesde').value){
+      const n=new Date(),ini=new Date(n.getFullYear(),n.getMonth()-1,1),fin=new Date(n.getFullYear(),n.getMonth(),0);
+      $('#anaDesde').value=perISO(ini);$('#anaHasta').value=perISO(fin);
+    }
+    if(anaD0)renderAnalitica();      // ya había un rango elegido: lo vuelve a mostrar
+    return;                          // si no, espera a que toque "Ver este rango"
+  }
+  renderAnalitica();
+});
+$('#anaRangoGo').onclick=()=>{
+  const d=$('#anaDesde').value,h=$('#anaHasta').value;
+  if(!d||!h){toastMsg('⚠ Elegí las dos fechas');return;}
+  if(d>h){toastMsg('⚠ "Desde" es posterior a "Hasta"');return;}
+  anaD0=d;anaD1=h;anaPeriodo='rango';renderAnalitica();
+};
+function anaRango(){
+  const now=new Date();
+  if(anaPeriodo==='rango'&&anaD0&&anaD1){
+    const [y,m,d]=anaD1.split('-').map(Number);
+    const fin=new Date(y,m-1,d+1);   // el "hasta" entra completo
+    return [new Date(anaD0+'T00:00:00').toISOString(), fin.toISOString(), _fechaAR(anaD0)+' al '+_fechaAR(anaD1)];
+  }
+  if(anaPeriodo==='semana'){const off=(now.getDay()+6)%7;return[new Date(now.getFullYear(),now.getMonth(),now.getDate()-off).toISOString(),null,'Esta semana'];}
+  if(anaPeriodo==='mes'){return[new Date(now.getFullYear(),now.getMonth(),1).toISOString(),null,H_MES[now.getMonth()]+' '+now.getFullYear()];}
+  return['2000-01-01T00:00:00.000Z',null,'Todo el historial'];
+}
+/* ══════════════════════════════════════════════════════════════
+   INFOGRAMA MENSUAL — impresiones de los últimos 12 meses.
+   Es independiente del selector de arriba: siempre muestra el
+   histórico, para ver la tendencia de un vistazo.
+   ══════════════════════════════════════════════════════════════ */
+let ANA_HIST=null;
+async function histImpresiones(meses){
+  if(ANA_HIST&&ANA_HIST.meses===meses)return ANA_HIST.datos;
+  const now=new Date();
+  const ini=new Date(now.getFullYear(),now.getMonth()-(meses-1),1);
+  const peds=await fetchPedidosRango(ini.toISOString(),null);
+  const acc={};
+  (peds||[]).forEach(p=>{
+    const d=new Date(p.created_at);
+    const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    const o=acc[k]=acc[k]||{imp:0,bolsas:0,peds:0};
+    o.peds++;
+    (p.est_lineas||[]).forEach(l=>{
+      const q=l.cantidad||0;
+      o.bolsas+=q;
+      o.imp+=q*((l.caras)||1)*((l.colores)||1);
+    });
+  });
+  const datos=[];
+  for(let i=0;i<meses;i++){
+    const d=new Date(now.getFullYear(),now.getMonth()-(meses-1)+i,1);
+    const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    const o=acc[k]||{imp:0,bolsas:0,peds:0};
+    datos.push({k,mes:H_MES[d.getMonth()],anio:d.getFullYear(),corto:H_MES[d.getMonth()].slice(0,3),...o});
+  }
+  ANA_HIST={meses,datos};
+  return datos;
+}
+async function renderAnaHist(){
+  const cont=$('#anaHist');if(!cont)return;
+  cont.innerHTML='<div class="adcard"><div class="adbd"><div class="admuted">Cargando histórico…</div></div></div>';
+  const d=await histImpresiones(12);
+  const conDatos=d.filter(x=>x.imp>0);
+  if(!conDatos.length){cont.innerHTML='';return;}
+  const max=Math.max(...d.map(x=>x.imp))||1;
+  // El promedio solo toma meses CERRADOS: el actual va incompleto y lo ensuciaría.
+  const cerrados=conDatos.filter(x=>x!==d[d.length-1]);
+  const baseProm=cerrados.length?cerrados:conDatos;
+  const prom=Math.round(baseProm.reduce((s,x)=>s+x.imp,0)/baseProm.length);
+  const ult=d[d.length-1];
+  // El mes en curso va incompleto: compararlo contra uno cerrado no dice nada.
+  // En su lugar se proyecta al cierre según los días hábiles ya transcurridos.
+  const hoy=new Date();
+  const habiles=(y,m,hasta)=>{let n=0;for(let i=1;i<=hasta;i++){const w=new Date(y,m,i).getDay();if(w>=1&&w<=5)n++;}return n;};
+  const diasMes=new Date(hoy.getFullYear(),hoy.getMonth()+1,0).getDate();
+  const hTrans=habiles(hoy.getFullYear(),hoy.getMonth(),hoy.getDate());
+  const hTot=habiles(hoy.getFullYear(),hoy.getMonth(),diasMes);
+  const proy=(hTrans>0&&ult.imp>0)?Math.round(ult.imp/hTrans*hTot):null;
+  const mejor=baseProm.reduce((a,b)=>b.imp>a.imp?b:a);
+  const barras=d.map(x=>{
+    const h=Math.max(2,Math.round(x.imp/max*100));
+    const esUlt=x===ult, cero=x.imp===0;
+    const col=cero?'#e2e8f0':(esUlt?'#f59e0b':'#0f766e');
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0">
+      <div style="font-size:9px;font-weight:800;color:${cero?'#cbd5e1':'#0f172a'};white-space:nowrap">${x.imp?(x.imp/1000).toFixed(x.imp<10000?1:0)+'k':'—'}</div>
+      <div style="width:100%;height:84px;display:flex;align-items:flex-end">
+        <div style="width:100%;height:${h}%;background:${col};border-radius:4px 4px 0 0"></div>
+      </div>
+      <div style="font-size:9px;color:#64748b;white-space:nowrap">${x.corto}</div>
+    </div>`;}).join('');
+  const lineaProm=Math.round(prom/max*84);
+  cont.innerHTML=`<div class="adcard"><div class="adh">Impresiones por mes<small>últimos 12 meses · la barra naranja es el mes en curso</small></div>
+    <div class="adbd">
+      <div style="position:relative">
+        <div style="display:flex;gap:3px;align-items:flex-end">${barras}</div>
+        <div style="position:absolute;left:0;right:0;bottom:${lineaProm+17}px;border-top:1.5px dashed #94a3b8;pointer-events:none"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;border-top:1px solid #eee;padding-top:10px;font-size:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:92px"><div style="color:#64748b">Promedio mensual</div><div style="font-size:17px;font-weight:800">${prom.toLocaleString('es-AR')}</div><div style="color:#64748b;font-size:11px">${baseProm.length} ${baseProm.length===1?'mes cerrado':'meses cerrados'}</div></div>
+        <div style="flex:1;min-width:92px"><div style="color:#64748b">Mes en curso</div><div style="font-size:17px;font-weight:800">${ult.imp.toLocaleString('es-AR')}</div>${proy?`<div style="color:#64748b;font-size:11px">proyectado <b style="color:${proy>=prom?'#15803d':'#b45309'}">${proy.toLocaleString('es-AR')}</b></div>`:''}</div>
+        <div style="flex:1;min-width:92px"><div style="color:#64748b">Mejor mes</div><div style="font-size:17px;font-weight:800">${mejor.imp.toLocaleString('es-AR')}</div><div style="color:#64748b;font-size:11px">${mejor.mes} ${mejor.anio}</div></div>
+      </div>
+      <div class="admuted" style="font-size:11px;margin-top:8px">La línea punteada es el promedio de los meses cerrados. La proyección sale del ritmo de los ${hTrans} días hábiles que van de ${H_MES[hoy.getMonth()].toLowerCase()}, llevado a los ${hTot} del mes.</div>
+    </div></div>`;
+}
+
 async function renderAnalitica(){
   const r=anaRango();$('#anaLbl').textContent=r[2];
+  renderAnaHist();   // el histórico va aparte: no depende del período elegido
   ['anaMat','anaMed','anaComb','anaColB','anaColAgua','anaColSolv','anaTintaUso','anaOps','anaTend','anaAudit','anaFrisTinta','anaEco','anaDistrib','anaRend'].forEach(id=>{const el=$('#'+id);if(el)el.innerHTML='<div class="admuted">Cargando…</div>';});
   const peds=await fetchPedidosRango(r[0],r[1]);const a=analizarPedidos(peds);
   anaExport={a,rango:r,peds};$('#anaBol').textContent=a.bolsas.toLocaleString('es-AR');$('#anaImp').textContent=a.impresiones.toLocaleString('es-AR');$('#anaPed').textContent=a.pedidos;
   // Rentabilidad para el reporte. Si la cuenta del stock no responde, el reporte sale igual sin esta parte.
   try{
     if(await cargarDatosRent()){
-      const d0=(r[0]||'').slice(0,10),d1=hoyISO();
+      const d0=(r[0]||'').slice(0,10),d1=(anaPeriodo==='rango'&&anaD1)?anaD1:hoyISO();
       const H=await horasEquipo(d0,d1);
       anaExport.rent=calcRentPedidos(peds,H.porDia);
       anaExport.horas=H;
