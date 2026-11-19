@@ -1746,6 +1746,27 @@ function horDescriptor(m){
    Si esa cuenta no responde, el reporte sale igual sin esta parte.
    ══════════════════════════════════════════════════════════════ */
 let RENT_OK=false, HIST_CACHE=null;
+
+/* Recargo de venta por impresión adicional.
+   El precio de lista es por 1 color x 1 cara. Cada impresión de más
+   (2do color, 2da cara, o las dos) se cobra aparte.
+   Se edita desde Rentabilidad -> Costo bolsas y se guarda en bolsas_config. */
+const RECARGO_DEF=192;
+/* Mano de obra: la 1ra impresión cuesta lo que calcula el sistema (liquidación ÷ bolsas);
+   cada impresión adicional cuesta un poco menos, porque el montaje ya está hecho. */
+const MO_EXTRA_DEF=40;
+function moExtra(){return (cfg.mano_obra_extra!=null)?Number(cfg.mano_obra_extra):MO_EXTRA_DEF;}
+function moUnit(colores,caras){
+  const b=(cfg.mano_obra_bolsa!=null)?Number(cfg.mano_obra_bolsa):null;
+  if(b==null)return null;
+  const imp=(Number(colores)||1)*(Number(caras)||1);
+  return b+moExtra()*Math.max(0,imp-1);
+}
+function recargoUnit(colores,caras){
+  const r=(cfg.recargo_impresion!=null)?Number(cfg.recargo_impresion):RECARGO_DEF;
+  const imp=(Number(colores)||1)*(Number(caras)||1);
+  return r*Math.max(0,imp-1);
+}
 const PREMIO_DEF={premio_meta:100000,premio_valor:75,premio_empleados:9,premio_horas_min:0};
 
 // Carga precios/costos/config una sola vez por sesión.
@@ -1766,6 +1787,8 @@ async function cargarDatosRent(force){
     const DERIVADAS=['mano_obra_bolsa','gastos_grales_bolsa'];   // se calculan, no se leen
     (k.data||[]).forEach(r=>{if(DERIVADAS.indexOf(r.clave)>=0)return;cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
     Object.keys(PREMIO_DEF).forEach(k2=>{if(cfg[k2]==null)cfg[k2]=PREMIO_DEF[k2];});
+    if(cfg.recargo_impresion==null)cfg.recargo_impresion=RECARGO_DEF;
+    if(cfg.mano_obra_extra==null)cfg.mano_obra_extra=MO_EXTRA_DEF;
     await recalcCostosVivos();
     RENT_OK=true;return true;
   }catch(e){console.error('cargarDatosRent',e);return false;}
@@ -1824,6 +1847,7 @@ function calcRentPedidos(peds,moDia){
       const tiers=ventaMap[fam+'|'+med];let unit=0;
       if(tiers&&tiers.length){let t=tiers[0];const base=totFam[fam]||qty;tiers.forEach(x=>{if(base>=x.desde)t=x;});unit=t.total/t.desde;}
       else faltan.add('Precio de venta · '+nomProd(fam)+' '+med);
+      unit+=recargoUnit(l.colores,l.caras);   // 2do color / 2da cara
       const cRec=costoMap[fam+'|'+med+'|'+(l.color_bolsa||'')]||costoMap[fam+'|'+med+'|']||{};
       const costoU=(cRec.costo!=null&&cRec.costo!=='')?Number(cRec.costo):null;
       if(costoU==null)faltan.add('Costo de bolsa · '+nomProd(fam)+' '+med);
@@ -1843,7 +1867,7 @@ function calcRentPedidos(peds,moDia){
     let mano;
     const mdia=moDia?moDia[L.fecha]:0;
     if(mdia&&impDia[L.fecha]>0)mano=mdia*(L.imp/impDia[L.fecha]);
-    else mano=manoPror*L.qty;
+    else mano=manoPror*L.qty+moExtra()*Math.max(0,L.imp-L.qty);
     const add=(o)=>{o.venta+=L.venta;o.bolsa+=L.bolsa;o.tinta+=L.tinta;o.mano+=mano;o.gastos+=L.gastos;o.bolsas+=L.qty;o.imp+=L.imp;if(o.peds)o.peds.add(L.pedido);};
     add(T);
     add(prod[L.fam]=prod[L.fam]||nuevo());
@@ -3187,6 +3211,8 @@ async function abrirCotizLegacy(){
     Object.values(ventaMap).forEach(a=>a.sort((x,y)=>x.desde-y.desde));
     (c.data||[]).forEach(r=>{costoMap[r.familia+'|'+r.medida+'|'+(r.color||'')]={costo:r.costo,venta:r.venta};});
     (k.data||[]).forEach(r=>{cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
+    if(cfg.recargo_impresion==null)cfg.recargo_impresion=RECARGO_DEF;
+    if(cfg.mano_obra_extra==null)cfg.mano_obra_extra=MO_EXTRA_DEF;
     setCoMode('ped');
   }catch(e){console.error('cotiz',e);$('#coResult').innerHTML='<div class="admuted" style="padding:12px">Error al cargar. ¿Creaste las tablas bolsas_venta, bolsas_precios y bolsas_config?</div>';}
 }
@@ -3232,11 +3258,12 @@ function renderPedidoRent(n,lineas,totFam){
     const fam=l.producto,med=medBase(l.medida),qty=l.cantidad||0;
     const tiers=ventaMap[fam+'|'+med];let unit=0,tramo='—';
     if(tiers&&tiers.length){let t=tiers[0];const base=totFam[fam]||qty;tiers.forEach(x=>{if(base>=x.desde)t=x;});unit=t.total/t.desde;tramo=t.desde;}else{faltan.add('venta '+med);}
+    unit+=recargoUnit(l.colores,l.caras);   // 2do color / 2da cara
     const venta=unit*qty;
     const cRec=costoMap[fam+'|'+med+'|'+(l.color_bolsa||'')]||costoMap[fam+'|'+med+'|']||{};
     const costoU=(cRec.costo!=null&&cRec.costo!=='')?Number(cRec.costo):null;if(costoU==null)faltan.add('costo '+med);
     const cpi=cpiTinta(l.tipo_tinta);const imp=(l.colores||1)*(l.caras||1);const tintaU=cpi*imp;if(!cpi)faltan.add('config tinta');
-    const manoU=cfg.mano_obra_bolsa!=null?cfg.mano_obra_bolsa:0;
+    const manoU=moUnit(l.colores,l.caras)||0;
     const gastU=cfg.gastos_grales_bolsa!=null?cfg.gastos_grales_bolsa:0;
     const b=(costoU||0)*qty,ti=tintaU*qty,ma=manoU*qty,ga=gastU*qty;
     TV+=venta;TB+=b;TT+=ti;TM+=ma;TG+=ga;
@@ -3283,14 +3310,16 @@ function calcCotiz(){
   const cont=$('#coResult');
   if(!tiers||!tiers.length){cont.innerHTML='<div class="bcard" style="margin-top:12px"><div style="padding:12px;font-size:14px">Esta medida no tiene precio de venta cargado.</div></div>';return;}
   let tier=tiers[0];tiers.forEach(t=>{if(co.qty>=t.desde)tier=t;});
-  const unit=tier.total/tier.desde;
+  const uLista=tier.total/tier.desde;
+  const recU=recargoUnit(co.colores,co.caras);   // impresiones adicionales
+  const unit=uLista+recU;
   const ventaTot=unit*co.qty;
   const rec=costoMap[co.prod+'|'+co.med+'|']||{};
   const money=n=>'$'+Math.round(n).toLocaleString('es-AR');
   const q=co.qty;
   const costoU=(rec.costo!=null&&rec.costo!=='')?Number(rec.costo):null;
   const cpi=cpiTinta(co.tipoTinta);const tintaU=cpi?cpi*co.colores*co.caras:null;
-  const manoU=(cfg.mano_obra_bolsa!=null)?cfg.mano_obra_bolsa:null;
+  const manoU=moUnit(co.colores,co.caras);
   const gastU=(cfg.gastos_grales_bolsa!=null)?cfg.gastos_grales_bolsa:null;
   const costoT=costoU!=null?costoU*q:0, tintaT=tintaU!=null?tintaU*q:0, manoT=manoU!=null?manoU*q:0, gastT=gastU!=null?gastU*q:0;
   const faltan=[];
@@ -3304,10 +3333,11 @@ function calcCotiz(){
   let html=`<div class="bcard" style="margin-top:12px"><div class="bch"><span><b>${P} ${co.med}</b></span><span>${q.toLocaleString('es-AR')} u · ${co.colores}c · tramo ${tier.desde}</span></div>
     <div style="padding:10px 2px;font-size:14px;line-height:1.85">
       <div style="font-size:17px">Venta: <b>${money(ventaTot)}</b> <span class="admuted">(${money(unit)}/u)</span></div>
+      ${recU>0?`<div class="admuted" style="font-size:12px">lista ${money(uLista)}/u + ${money(recU)}/u por ${(co.colores*co.caras)-1} impresión${((co.colores*co.caras)-1)>1?'es':''} extra</div>`:''}
       <div style="margin-top:6px;border-top:1px solid #eee;padding-top:6px">
       − Bolsa: ${money(costoT)} <span class="admuted">(${costoU!=null?money(costoU):'—'}/u)</span><br>
       − Tinta (${co.tipoTinta}, ${co.colores}c×${co.caras}car): ${money(tintaT)} <span class="admuted">(${tintaU!=null?money(tintaU):'—'}/u)</span><br>
-      − Mano de obra: ${money(manoT)} <span class="admuted">(${manoU!=null?money(manoU):'—'}/u)</span><br>
+      − Mano de obra: ${money(manoT)} <span class="admuted">(${manoU!=null?money(manoU):'—'}/u${(co.colores*co.caras)>1&&cfg.mano_obra_bolsa!=null?` = ${money(cfg.mano_obra_bolsa)} + ${(co.colores*co.caras)-1}×${money(moExtra())}`:''})</span><br>
       − Gastos grales: ${money(gastT)} <span class="admuted">(${gastU!=null?money(gastU):'—'}/u)</span></div>
       <div style="margin-top:8px;border-top:2px solid #333;padding-top:8px;font-size:18px;color:${col}">Rentabilidad: <b>${money(rent)}</b> (${margen.toFixed(1)}%)</div>`;
   if(faltan.length)html+=`<div class="admuted" style="font-size:12px;margin-top:6px">Falta cargar: ${faltan.join(', ')} — el resultado es parcial.</div>`;
@@ -3371,7 +3401,7 @@ function renderPeriodo(peds,moDia,desde,hasta,label){
       const costoU=(cRec.costo!=null&&cRec.costo!=='')?Number(cRec.costo):null;
       if(costoU==null)faltan.add('costo '+med);
       const cpi=cpiTinta(l.tipo_tinta),imp=(l.colores||1)*(l.caras||1);
-      D.venta+=unit*qty;D.bolsa+=(costoU||0)*qty;D.tinta+=cpi*imp*qty;D.bolsas+=qty;
+      D.venta+=unit*qty;D.bolsa+=(costoU||0)*qty;D.tinta+=cpi*imp*qty;D.bolsas+=qty;D.imp=(D.imp||0)+imp*qty;
     });
   });
   const gastU=cfg.gastos_grales_bolsa!=null?cfg.gastos_grales_bolsa:0;
@@ -3383,7 +3413,7 @@ function renderPeriodo(peds,moDia,desde,hasta,label){
     const D=dias[f];
     const gastos=gastU*D.bolsas;
     let mano=moDia[f]||0,estim=false;
-    if(!mano){mano=manoPror*D.bolsas;estim=true;}   // sin fichajes ese día: cae al promedio por bolsa
+    if(!mano){mano=manoPror*D.bolsas+moExtra()*Math.max(0,(D.imp||D.bolsas)-D.bolsas);estim=true;}   // sin fichajes: promedio por bolsa + impresiones extra
     const rent=D.venta-D.bolsa-D.tinta-mano-gastos;
     const margen=D.venta>0?rent/D.venta*100:0;
     TV+=D.venta;TB+=D.bolsa;TT+=D.tinta;TM+=mano;TG+=gastos;TBol+=D.bolsas;TPed+=D.peds.size;
@@ -3442,6 +3472,8 @@ async function abrirGastosLegacy(){
     if(g.error)throw g.error;
     gastos=g.data||[];
     (k.data||[]).forEach(r=>{cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
+    if(cfg.recargo_impresion==null)cfg.recargo_impresion=RECARGO_DEF;
+    if(cfg.mano_obra_extra==null)cfg.mano_obra_extra=MO_EXTRA_DEF;
     await gaComputePeriodo();
     gaBase=cfg.bolsas_mes||(gaCalc?gaCalc.bolsasMes:null)||null;
     renderGastos();
@@ -3886,6 +3918,8 @@ async function abrirRent(){
     Object.values(ventaMap).forEach(a=>a.sort((x,y)=>x.desde-y.desde));
     (c.data||[]).forEach(r=>{costoMap[r.familia+'|'+r.medida+'|'+(r.color||'')]={costo:r.costo};precios[pkey(r.familia,r.medida,r.color)]={costo:r.costo};});
     (k.data||[]).forEach(r=>{cfg[r.clave]=(r.valor!=null?Number(r.valor):null);});
+    if(cfg.recargo_impresion==null)cfg.recargo_impresion=RECARGO_DEF;
+    if(cfg.mano_obra_extra==null)cfg.mano_obra_extra=MO_EXTRA_DEF;
     gastos=g.data||[];
     await recalcCostosVivos(g.data||[]);
     rentReady=true;
@@ -3899,13 +3933,42 @@ function renderRentCostos(){
     ? lstT.map(t=>t.nombre+': <b>'+money2(cpiTinta(t.nombre))+'</b> por impresión').join(' · ')
     : 'Tinta al agua: <b>'+money2(cpiTinta('Al agua'))+'</b> · Solvente: <b>'+money2(cpiTinta('Solvente Eva Flex'))+'</b> por impresión';
   const mo=cfg.mano_obra_bolsa,ga=cfg.gastos_grales_bolsa;
+  const recAct=(cfg.recargo_impresion!=null)?Number(cfg.recargo_impresion):RECARGO_DEF;
+  const moEx=moExtra();
   $('#rentCostos').innerHTML=`<div class="bcard"><div class="bch"><span><b>Costos actuales del sistema</b></span><span>calculado en vivo</span></div>
     <div style="padding:8px 2px;font-size:13px;line-height:1.75">
       ${lineaT}<br>
       Mano de obra: <b>${mo!=null?money(mo):'—'}</b> por bolsa <span class="admuted">(liquidación ÷ bolsas, 90 días)</span><br>
       Gastos generales: <b>${ga!=null?money(ga):'—'}</b> por bolsa <span class="admuted">(gastos ÷ ${gaBase?gaBase.toLocaleString('es-AR'):'—'} bolsas/mes)</span>
     </div></div>
+    <div class="bcard" style="margin-top:8px"><div class="bch"><span><b>Mano de obra por impresión</b></span><span>la 1ra incluye el montaje</span></div>
+      <div style="padding:8px 2px;font-size:13px;line-height:1.75">
+        1ra impresión: <b>${mo!=null?money(mo):'—'}</b> <span class="admuted">(lo calcula el sistema)</span><br>
+        Cada impresión siguiente: <b>${money(moEx)}</b> <span class="admuted">(sale más rápido, el montaje ya está)</span><br>
+        <span class="admuted">2 colores × 2 caras = ${mo!=null?money(mo)+' + 3×'+money(moEx)+' = '+money(mo+3*moEx):'—'} por bolsa</span>
+      </div>
+      <button class="accb copy" id="moEditBtn" style="font-size:12px">✎ Cambiar impresión extra</button></div>
+    <div class="bcard" style="margin-top:8px"><div class="bch"><span><b>Recargo de venta por impresión extra</b></span><span>precio de lista = 1 color × 1 cara</span></div>
+      <div style="padding:8px 2px;font-size:13px;line-height:1.75">
+        <b id="recVal">${money(recAct)}</b> por bolsa, por cada impresión de más.<br>
+        <span class="admuted">2 colores × 1 cara = +${money(recAct)} · 1 color × 2 caras = +${money(recAct)} · 2 colores × 2 caras = +${money(recAct*3)}</span>
+      </div>
+      <button class="accb copy" id="recEditBtn" style="font-size:12px">✎ Cambiar recargo</button></div>
     <button class="accb copy" id="rentPremioBtn" style="margin-top:8px;font-size:12px">🏆 Parámetros del premio</button>`;
+  const mb2=document.getElementById('moEditBtn');
+  if(mb2)mb2.onclick=()=>openPad('Mano de obra por impresión extra',moEx,n=>{
+    if(n==null||n<0)return;
+    cfg.mano_obra_extra=n;
+    guardarCfg('mano_obra_extra',n);
+    renderRentCostos();
+  });
+  const rb=document.getElementById('recEditBtn');
+  if(rb)rb.onclick=()=>openPad('Recargo por impresión extra',recAct,n=>{
+    if(n==null||n<0)return;
+    cfg.recargo_impresion=n;
+    guardarCfg('recargo_impresion',n);
+    renderRentCostos();
+  });
   const pb=document.getElementById('rentPremioBtn');
   if(pb)pb.onclick=editarPremio;
 }
