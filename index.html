@@ -607,7 +607,7 @@
         <div class="adkpi"><div class="v num" id="anaPed">0</div><div class="k">Pedidos</div></div>
       </div>
       <div id="anaAlert" style="display:none"></div>
-      <div class="adcard"><div class="adh">🔍 Auditoría de impresiones<small>bolsas vs. impresiones · solo lectura</small></div><div class="adbd" id="anaAudit"></div></div>
+      <div class="adcard"><div class="adh" id="anaAuditH" style="cursor:pointer;user-select:none">🔍 Auditoría de impresiones <span id="anaAuditCar" style="float:right;font-size:13px">▸</span><small id="anaAuditRes">bolsas vs. impresiones · tocá para ver el detalle</small></div><div class="adbd" id="anaAudit" style="display:none"></div></div>
       <div class="adcard"><div class="adh">Tendencia<small>bolsas por día</small></div><div class="adbd" id="anaTend"></div></div>
       <div class="adcard"><div class="adh">Materiales más usados</div><div class="adbd" id="anaMat"></div></div>
       <div class="adcard"><div class="adh">Medidas más fabricadas</div><div class="adbd" id="anaMed"></div></div>
@@ -1504,6 +1504,22 @@ function auditImpresiones(peds){
 function renderAudit(peds){
   const cont=$('#anaAudit');if(!cont)return;
   const rows=auditImpresiones(peds);
+  // Resumen en la cabecera: así se sabe si hay algo raro sin tener que abrir.
+  const incs=rows.filter(r=>r.override).length;
+  const res=$('#anaAuditRes');
+  if(res)res.textContent=rows.length?(rows.length+' pedidos · '+(incs?incs+' con valor manual viejo':'todos calculados automáticamente')):'sin pedidos en el período';
+  const h=$('#anaAuditH');
+  if(h&&!h.dataset.wired){
+    h.dataset.wired='1';
+    h.onclick=()=>{
+      const b=$('#anaAudit'),c=$('#anaAuditCar');
+      const abierto=b.style.display!=='none';
+      b.style.display=abierto?'none':'block';
+      if(c)c.textContent=abierto?'▸':'▾';
+      try{localStorage.setItem('anaAuditOpen',abierto?'0':'1');}catch(e){}
+    };
+    try{if(localStorage.getItem('anaAuditOpen')==='1'){$('#anaAudit').style.display='block';const c=$('#anaAuditCar');if(c)c.textContent='▾';}}catch(e){}
+  }
   if(!rows.length){cont.innerHTML='<div class="admuted">Sin pedidos en el período.</div>';$('#anaAlert').style.display='none';return;}
   const tot={bolsas:0,calc:0,usadas:0};rows.forEach(r=>{tot.bolsas+=r.bolsas;tot.calc+=r.calc;tot.usadas+=r.usadas;});
   const over=rows.filter(r=>r.override);
